@@ -26,7 +26,6 @@ import java.util.Objects;
 import java.util.UUID;
 
 import de.dennisguse.opentracks.stats.TrackStatistics;
-import de.dennisguse.opentracks.util.PreferencesUtils;
 
 /**
  * A track.
@@ -53,8 +52,8 @@ public class Track {
     /**
      * May be null if the track was not loaded from the database.
      */
-    public @Nullable
-    Id getId() {
+    @Nullable
+    public Id getId() {
         return id;
     }
 
@@ -118,14 +117,13 @@ public class Track {
             this.id = id;
         }
 
+        protected Id(Parcel in) {
+            id = in.readLong();
+        }
+
         //TOOD Limit visibility to TrackRecordingService / ContentProvider
         public long getId() {
             return id;
-        }
-
-        @Deprecated //TODO Use a Track.Id of null instead
-        public boolean isValid() {
-            return id != PreferencesUtils.RECORDING_TRACK_ID_DEFAULT;
         }
 
         @Override

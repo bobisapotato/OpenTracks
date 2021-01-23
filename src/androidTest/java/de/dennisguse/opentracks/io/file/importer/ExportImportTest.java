@@ -9,6 +9,7 @@ import androidx.test.filters.LargeTest;
 
 import org.junit.After;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
@@ -17,7 +18,6 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 
 import de.dennisguse.opentracks.R;
@@ -61,7 +61,7 @@ public class ExportImportTest {
 
     @Before
     public void setUp() {
-        Pair<Track, TrackPoint[]> track = TestDataUtil.createTrack(trackId, 10);
+        Pair<Track, List<TrackPoint>> track = TestDataUtil.createTrack(trackId, 10);
         track.first.setIcon(TRACK_ICON);
         track.first.setCategory(TRACK_CATEGORY);
         track.first.setDescription(TRACK_DESCRIPTION);
@@ -69,10 +69,10 @@ public class ExportImportTest {
         contentProviderUtils.bulkInsertTrackPoint(track.second, track.first.getId());
 
         trackPoints.clear();
-        trackPoints.addAll(Arrays.asList(track.second));
+        trackPoints.addAll(track.second);
 
         for (int i = 0; i < 3; i++) {
-            Marker marker = new Marker(trackId, track.second[i].getLocation());
+            Marker marker = new Marker(trackId, track.second.get(i).getLocation());
             marker.setName("the marker " + i);
             marker.setDescription("the marker description " + i);
             marker.setCategory("the marker category" + i);
@@ -134,7 +134,7 @@ public class ExportImportTest {
         assertMarkers();
 
         // 3. trackpoints
-        assertTrackpoints(false, false, false, false);
+        assertTrackpoints(false, false, false, false, false);
     }
 
     @LargeTest
@@ -169,7 +169,7 @@ public class ExportImportTest {
         assertMarkers();
 
         // 3. trackpoints
-        assertTrackpoints(true, true, true, true);
+        assertTrackpoints(true, true, true, true, true);
     }
 
     @LargeTest
@@ -196,6 +196,7 @@ public class ExportImportTest {
         assertNull(importedTrack);
     }
 
+    @Ignore
     @LargeTest
     @Test
     public void kmz_only_track() {
@@ -203,6 +204,7 @@ public class ExportImportTest {
         Log.e(TAG, "Test not implemented.");
     }
 
+    @Ignore
     @LargeTest
     @Test
     public void kmz_with_trackdetail() {
@@ -210,6 +212,7 @@ public class ExportImportTest {
         Log.e(TAG, "Test not implemented.");
     }
 
+    @Ignore
     @LargeTest
     @Test
     public void kmz_with_trackdetail_and_sensordata() {
@@ -217,6 +220,7 @@ public class ExportImportTest {
         Log.e(TAG, "Test not implemented.");
     }
 
+    @Ignore
     @LargeTest
     @Test
     public void kmz_with_trackdetail_and_sensordata_and_pictures() {
@@ -258,7 +262,7 @@ public class ExportImportTest {
         assertMarkers();
 
         // 3. trackpoints
-        assertTrackpoints(false, true, true, false);
+        assertTrackpoints(false, true, true, true, true);
     }
 
     @LargeTest
@@ -305,7 +309,7 @@ public class ExportImportTest {
         }
     }
 
-    private void assertTrackpoints(boolean verifyPower, boolean verifyHeartrate, boolean verifyCadence, boolean verifyElevationGain) {
+    private void assertTrackpoints(boolean verifyPower, boolean verifyHeartrate, boolean verifyCadence, boolean verifyElevationGain, boolean verifyElevationLoss) {
         List<TrackPoint> importedTrackPoints = contentProviderUtils.getTrackPoints(importTrackId);
         assertEquals(trackPoints.size(), importedTrackPoints.size());
 
@@ -333,6 +337,9 @@ public class ExportImportTest {
             }
             if (verifyElevationGain) {
                 assertEquals(trackPoint.getElevationGain(), importedTrackPoint.getElevationGain(), 0.01);
+            }
+            if (verifyElevationLoss) {
+                assertEquals(trackPoint.getElevationLoss(), importedTrackPoint.getElevationLoss(), 0.01);
             }
         }
     }

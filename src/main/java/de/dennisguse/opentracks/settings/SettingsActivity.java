@@ -1,11 +1,13 @@
 package de.dennisguse.opentracks.settings;
 
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.util.Log;
+import android.view.View;
 import android.widget.Toast;
 
-import androidx.appcompat.app.AppCompatActivity;
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.widget.Toolbar;
 import androidx.documentfile.provider.DocumentFile;
 import androidx.fragment.app.DialogFragment;
@@ -16,10 +18,12 @@ import androidx.preference.PreferenceFragmentCompat;
 
 import java.util.Locale;
 
+import de.dennisguse.opentracks.AbstractActivity;
 import de.dennisguse.opentracks.R;
 import de.dennisguse.opentracks.fragments.ChooseActivityTypeDialogFragment;
 import de.dennisguse.opentracks.io.file.TrackFileFormat;
 import de.dennisguse.opentracks.settings.bluetooth.BluetoothLeCyclingCadenceAndSpeedPreference;
+import de.dennisguse.opentracks.settings.bluetooth.BluetoothLeCyclingPowerPreference;
 import de.dennisguse.opentracks.settings.bluetooth.BluetoothLeHeartRatePreference;
 import de.dennisguse.opentracks.settings.bluetooth.BluetoothLeSensorPreference;
 import de.dennisguse.opentracks.util.ActivityUtils;
@@ -28,23 +32,50 @@ import de.dennisguse.opentracks.util.HackUtils;
 import de.dennisguse.opentracks.util.PreferencesUtils;
 import de.dennisguse.opentracks.util.StringUtils;
 
-public class SettingsActivity extends AppCompatActivity implements ChooseActivityTypeDialogFragment.ChooseActivityTypeCaller, ResetDialogPreference.ResetCallback {
+public class SettingsActivity extends AbstractActivity implements ChooseActivityTypeDialogFragment.ChooseActivityTypeCaller, ResetDialogPreference.ResetCallback {
 
     private static final String TAG = SettingsActivity.class.getSimpleName();
+    public static final String EXTRAS_CHECK_EXPORT_DIRECTORY = "Check Export Directory";
 
     private PrefsFragment prefsFragment;
+    private boolean checkExportDirectory = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        setContentView(R.layout.settings);
-
-        Toolbar toolbar = findViewById(R.id.toolbar);
-        toolbar.setTitle(R.string.menu_settings);
-        setSupportActionBar(toolbar);
-
+        Intent intent = getIntent();
+        if (intent != null && intent.hasExtra(EXTRAS_CHECK_EXPORT_DIRECTORY)) {
+            checkExportDirectory = true;
+        }
         onReset();
+    }
+
+    @Override
+    protected View getRootView() {
+        return getLayoutInflater().inflate(R.layout.settings, null);
+    }
+
+    @Override
+    protected void setupActionBarBack(Toolbar toolbar) {
+        super.setupActionBarBack(toolbar);
+        toolbar.setTitle(R.string.menu_settings);
+    }
+
+    @Override
+    protected void onResume() {
+        if (checkExportDirectory) {
+            checkExportDirectory = false;
+            new AlertDialog.Builder(this)
+                    .setIcon(R.drawable.ic_logo_24dp)
+                    .setTitle(R.string.app_name)
+                    .setMessage(R.string.export_error_post_workout)
+                    .setNeutralButton(R.string.generic_ok, null)
+                    .create()
+                    .show();
+        }
+
+        super.onResume();
     }
 
     @Override
@@ -129,9 +160,11 @@ public class SettingsActivity extends AppCompatActivity implements ChooseActivit
                 activityPreferenceDialog = ActivityTypePreference.ActivityPreferenceDialog.newInstance(preference.getKey());
                 dialogFragment = activityPreferenceDialog;
             } else if (preference instanceof BluetoothLeHeartRatePreference) {
-                dialogFragment = BluetoothLeSensorPreference.BluetoothLeSensorPreferenceDialog.newInstance(preference.getKey(), BluetoothUtils.HEART_RATE_SERVICE_UUID);
+                dialogFragment = BluetoothLeSensorPreference.BluetoothLeSensorPreferenceDialog.newInstance(preference.getKey(), BluetoothUtils.HEART_RATE_SUPPORTING_DEVICES);
             } else if (preference instanceof BluetoothLeCyclingCadenceAndSpeedPreference) {
                 dialogFragment = BluetoothLeSensorPreference.BluetoothLeSensorPreferenceDialog.newInstance(preference.getKey(), BluetoothUtils.CYCLING_SPEED_CADENCE_SERVICE_UUID);
+            } else if (preference instanceof BluetoothLeCyclingPowerPreference) {
+                dialogFragment = BluetoothLeSensorPreference.BluetoothLeSensorPreferenceDialog.newInstance(preference.getKey(), BluetoothUtils.CYCLING_POWER_UUID);
             }
 
             if (dialogFragment != null) {

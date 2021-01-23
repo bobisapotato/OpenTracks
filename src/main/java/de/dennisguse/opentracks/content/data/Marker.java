@@ -27,8 +27,6 @@ import androidx.annotation.VisibleForTesting;
 
 import java.util.Objects;
 
-import de.dennisguse.opentracks.util.PreferencesUtils;
-
 /**
  * @author Leif Hendrik Wilden
  * @author Rodrigo Damazio
@@ -47,6 +45,11 @@ public final class Marker {
     private final Location location;
     @Deprecated //TODO Make an URI instead of String
     private String photoUrl = "";
+
+    public Marker(@Nullable Track.Id trackId) {
+        this.trackId = trackId;
+        location = null;
+    }
 
     @VisibleForTesting
     public Marker(@NonNull Track.Id trackId, @NonNull TrackPoint trackPoint) {
@@ -79,8 +82,8 @@ public final class Marker {
     /**
      * May be null if the it was not loaded from the database.
      */
-    public @Nullable
-    Id getId() {
+    @Nullable
+    public Id getId() {
         return id;
     }
 
@@ -120,8 +123,8 @@ public final class Marker {
         this.icon = icon;
     }
 
-    public @NonNull
-    Track.Id getTrackId() {
+    @NonNull
+    public Track.Id getTrackId() {
         return trackId;
     }
 
@@ -141,8 +144,8 @@ public final class Marker {
         this.duration = duration;
     }
 
-    public @NonNull
-    Location getLocation() {
+    @NonNull
+    public Location getLocation() {
         return location;
     }
 
@@ -173,11 +176,6 @@ public final class Marker {
         //TOOD Limit visibility to TrackRecordingService / ContentProvider
         public long getId() {
             return id;
-        }
-
-        @Deprecated //TODO Use a Id of null instead
-        public boolean isValid() {
-            return id != PreferencesUtils.RECORDING_TRACK_ID_DEFAULT;
         }
 
         @Override

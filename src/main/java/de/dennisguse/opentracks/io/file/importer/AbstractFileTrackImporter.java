@@ -29,7 +29,6 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
@@ -61,14 +60,10 @@ abstract class AbstractFileTrackImporter extends DefaultHandler implements Track
 
     private static final String TAG = AbstractFileTrackImporter.class.getSimpleName();
 
-    // The maximum number of buffered locations for bulk-insertion
-    private static final int MAX_BUFFERED_LOCATIONS = 512;
-
     private final Context context;
     private final ContentProviderUtils contentProviderUtils;
     private final int recordingDistanceInterval;
 
-    private Track.Id importTrackId;
     private final List<Track.Id> trackIds = new ArrayList<>();
     private final List<Marker> markers = new ArrayList<>();
 
@@ -91,6 +86,8 @@ abstract class AbstractFileTrackImporter extends DefaultHandler implements Track
     protected String markerType;
     protected String photoUrl;
     protected String uuid;
+    protected String gain;
+    protected String loss;
 
     // The current track data
     private TrackData trackData;
@@ -102,11 +99,6 @@ abstract class AbstractFileTrackImporter extends DefaultHandler implements Track
         this.context = context;
         this.contentProviderUtils = contentProviderUtils;
         this.recordingDistanceInterval = PreferencesUtils.getRecordingDistanceInterval(context);
-    }
-
-    AbstractFileTrackImporter(Context context, ContentProviderUtils contentProviderUtils, Track.Id importTrackId) {
-        this(context, contentProviderUtils);
-        this.importTrackId = importTrackId;
     }
 
     @Override
@@ -133,18 +125,15 @@ abstract class AbstractFileTrackImporter extends DefaultHandler implements Track
 
             saxParser.parse(inputStream, this);
             Log.d(TAG, "Total import time: " + (System.currentTimeMillis() - start) + "ms");
-            if (trackIds.size() != 1) {
-                // TODO Multi track is not supported yet.
-                throw new ImportParserException("Multi track not supported");
-            }
             return trackIds.get(0);
         } catch (IOException | SAXException | ParserConfigurationException e) {
             Log.e(TAG, "Unable to import file", e);
-            cleanImport();
+            if (trackIds.size() > 0) {
+                cleanImport();
+            }
             throw new ImportParserException(e);
         } catch (SQLiteConstraintException e) {
             Log.e(TAG, "Unable to import file", e);
-            cleanImport();
             throw new ImportAlreadyExistsException(e);
         }
     }
@@ -171,7 +160,7 @@ abstract class AbstractFileTrackImporter extends DefaultHandler implements Track
         // TODO Should not be necessary anymore?
         TrackStatisticsUpdater markerTrackStatisticsUpdater = new TrackStatisticsUpdater(track.getTrackStatistics().getStartTime_ms());
 
-        try (TrackPointIterator trackPointIterator = contentProviderUtils.getTrackPointLocationIterator(track.getId(), -1L, false)) {
+        try (TrackPointIterator trackPointIterator = contentProviderUtils.getTrackPointLocationIterator(track.getId(), null)) {
 
             while (true) {
                 if (marker == null) {
@@ -180,6 +169,10 @@ abstract class AbstractFileTrackImporter extends DefaultHandler implements Track
                     if (marker == null) {
                         // No more markers
                         return;
+                    }
+                    // If marker had photo it must be translated to internal photo url (depend on track id)
+                    if (marker.hasPhoto()) {
+                        marker.setPhotoUrl(getInternalPhotoUrl(marker.getPhotoUrl()));
                     }
                 }
 
@@ -230,26 +223,12 @@ abstract class AbstractFileTrackImporter extends DefaultHandler implements Track
      */
     protected void onTrackStart() throws SAXException {
         trackData = new TrackData();
-        Track.Id trackId;
-        if (importTrackId == null) {
-            Uri uri = contentProviderUtils.insertTrack(trackData.track);
-            trackId = new Track.Id(Long.parseLong(uri.getLastPathSegment()));
-        } else {
-            if (trackIds.size() > 0) {
-                throw new SAXException(createErrorMessage("Cannot import more than one track to an existing track " + importTrackId.getId()));
-            }
-            trackId = importTrackId;
-            contentProviderUtils.clearTrack(trackId);
-        }
-        trackIds.add(trackId);
-        trackData.track.setId(trackId);
     }
 
     /**
      * On track end.
      */
     protected void onTrackEnd() {
-        flushLocations(trackData);
         if (name != null) {
             trackData.track.setName(name);
         }
@@ -279,17 +258,27 @@ abstract class AbstractFileTrackImporter extends DefaultHandler implements Track
         }
         trackData.track.setTrackStatistics(trackData.trackStatisticsUpdater.getTrackStatistics());
 
-        try {
-            contentProviderUtils.updateTrack(trackData.track);
-        } catch (SQLiteConstraintException e) {
+        Track track = contentProviderUtils.getTrack(trackData.track.getUuid());
+        if (track != null) {
             if (PreferencesUtils.getPreventReimportTracks(context)) {
-                throw e;
+                throw new ImportAlreadyExistsException(context.getString(R.string.import_prevent_reimport));
             }
 
             //TODO This is a workaround until we have proper UI.
             trackData.track.setUuid(UUID.randomUUID());
-            contentProviderUtils.updateTrack(trackData.track);
         }
+
+        if (trackIds.size() > 0) {
+            // TODO Multi track is not supported yet.
+            cleanImport();
+            throw new ImportParserException("Multi track not supported");
+        }
+        Uri uri = contentProviderUtils.insertTrack(trackData.track);
+        Track.Id trackId = new Track.Id(Long.parseLong(uri.getLastPathSegment()));
+        trackIds.add(trackId);
+        trackData.track.setId(trackId);
+
+        flushLocations(trackData);
     }
 
     /**
@@ -314,7 +303,8 @@ abstract class AbstractFileTrackImporter extends DefaultHandler implements Track
         TrackPoint trackPoint = createTrackPoint();
 
         if (!LocationUtils.isValidLocation(trackPoint.getLocation())) {
-            throw new SAXException(createErrorMessage("Invalid location detected: " + trackPoint));
+            Log.w(TAG, "Marker with invalid coordinates ignored: " + trackPoint.getLocation());
+            return;
         }
         Marker marker = new Marker(trackPoint.getLocation());
 
@@ -401,7 +391,7 @@ abstract class AbstractFileTrackImporter extends DefaultHandler implements Track
      * @param externalPhotoUrl the file name
      */
     protected String getInternalPhotoUrl(String externalPhotoUrl) {
-        if (importTrackId == null) {
+        if (trackData.track.getId() == null) {
             Log.e(TAG, "Track id is invalid.");
             return null;
         }
@@ -412,7 +402,7 @@ abstract class AbstractFileTrackImporter extends DefaultHandler implements Track
         }
 
         String importFileName = KmzTrackImporter.importNameForFilename(externalPhotoUrl);
-        File file = FileUtils.getPhotoFileIfExists(context, importTrackId, Uri.parse(importFileName));
+        File file = FileUtils.buildInternalPhotoFile(context, trackData.track.getId(), Uri.parse(importFileName));
         if (file != null) {
             Uri photoUri = FileUtils.getUriForFile(context, file);
             return "" + photoUri;
@@ -479,6 +469,21 @@ abstract class AbstractFileTrackImporter extends DefaultHandler implements Track
             }
         }
 
+        if (gain != null) {
+            try {
+                trackPoint.setElevationGain(Float.parseFloat(gain));
+            } catch (Exception e) {
+                throw new SAXException(createErrorMessage(String.format(Locale.US, "Unable to parse elevation gain: %s", gain)), e);
+            }
+        }
+        if (loss != null) {
+            try {
+                trackPoint.setElevationLoss(Float.parseFloat(loss));
+            } catch (Exception e) {
+                throw new SAXException(createErrorMessage(String.format(Locale.US, "Unable to parse elevation loss: %s", loss)), e);
+            }
+        }
+
         return trackPoint;
     }
 
@@ -493,13 +498,9 @@ abstract class AbstractFileTrackImporter extends DefaultHandler implements Track
         }
         trackData.trackStatisticsUpdater.addTrackPoint(trackPoint, recordingDistanceInterval);
 
-        trackData.bufferedTrackPoints[trackData.numBufferedTrackPoints] = trackPoint;
+        trackData.bufferedTrackPoints.add(trackPoint);
         trackData.numBufferedTrackPoints++;
         trackData.numberOfLocations++;
-
-        if (trackData.numBufferedTrackPoints >= MAX_BUFFERED_LOCATIONS) {
-            flushLocations(trackData);
-        }
     }
 
     /**
@@ -511,7 +512,7 @@ abstract class AbstractFileTrackImporter extends DefaultHandler implements Track
         if (data.numBufferedTrackPoints <= 0) {
             return;
         }
-        contentProviderUtils.bulkInsertTrackPoint(Arrays.copyOfRange(data.bufferedTrackPoints, 0, data.numBufferedTrackPoints), data.track.getId());
+        contentProviderUtils.bulkInsertTrackPoint(data.bufferedTrackPoints, data.track.getId());
         data.numBufferedTrackPoints = 0;
     }
 
@@ -548,7 +549,7 @@ abstract class AbstractFileTrackImporter extends DefaultHandler implements Track
         final long importTime = System.currentTimeMillis();
 
         // The buffered locations
-        final TrackPoint[] bufferedTrackPoints = new TrackPoint[MAX_BUFFERED_LOCATIONS];
+        final List<TrackPoint> bufferedTrackPoints = new ArrayList<>();
 
         // The number of buffered locations
         int numBufferedTrackPoints = 0;

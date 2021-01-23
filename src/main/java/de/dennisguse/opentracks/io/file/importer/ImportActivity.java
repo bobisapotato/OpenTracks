@@ -16,6 +16,7 @@
 
 package de.dennisguse.opentracks.io.file.importer;
 
+import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
@@ -24,13 +25,16 @@ import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.widget.Toolbar;
+import androidx.core.content.ContextCompat;
 import androidx.documentfile.provider.DocumentFile;
 import androidx.fragment.app.FragmentActivity;
 import androidx.lifecycle.ViewModelProvider;
 
 import de.dennisguse.opentracks.R;
+import de.dennisguse.opentracks.TrackRecordedActivity;
 import de.dennisguse.opentracks.databinding.ImportActivityBinding;
 import de.dennisguse.opentracks.io.file.ErrorListDialog;
+import de.dennisguse.opentracks.util.IntentUtils;
 
 /**
  * An activity to import files from the external storage.
@@ -126,7 +130,9 @@ public class ImportActivity extends FragmentActivity {
     private void initViews() {
         viewBinding.importProgressDone.setText("0");
         viewBinding.importProgressTotal.setText("0");
-        viewBinding.importProgressSummary.setText(getString(R.string.import_progress_review, 0, 0, 0, 0));
+        viewBinding.importProgressSummaryOk.setText("0");
+        viewBinding.importProgressSummaryExists.setText("0");
+        viewBinding.importProgressSummaryErrors.setText("0");
     }
 
     private int getTotalDone() {
@@ -140,7 +146,12 @@ public class ImportActivity extends FragmentActivity {
         viewBinding.importProgressTotal.setText("" + summary.getTotalCount());
 
         viewBinding.importProgressBar.setProgress((int) ((float) done / (float) summary.getTotalCount() * 100f));
-        viewBinding.importProgressSummary.setText(getString(R.string.import_progress_review, getTotalDone(), summary.getSuccessCount(), summary.getExistsCount(), summary.getErrorCount()));
+        viewBinding.importProgressSummaryOk.setText(String.valueOf(summary.getSuccessCount()));
+        viewBinding.importProgressSummaryExists.setText(String.valueOf(summary.getExistsCount()));
+        viewBinding.importProgressSummaryErrors.setText(String.valueOf(summary.getErrorCount()));
+        viewBinding.importProgressSummaryOkGroup.setVisibility(summary.getSuccessCount() > 0 ? View.VISIBLE : View.GONE);
+        viewBinding.importProgressSummaryExistsGroup.setVisibility(summary.getExistsCount() > 0 ? View.VISIBLE : View.GONE);
+        viewBinding.importProgressSummaryErrorsGroup.setVisibility(summary.getErrorCount() > 0 ? View.VISIBLE : View.GONE);
 
         if (done == summary.getTotalCount()) {
             onImportEnded();
@@ -148,6 +159,9 @@ public class ImportActivity extends FragmentActivity {
     }
 
     private void onImportEnded() {
+        viewBinding.importProgressAlertMsg.setVisibility(View.VISIBLE);
+        viewBinding.importProgressAlertIcon.setVisibility(View.VISIBLE);
+
         viewBinding.importProgressRightButton.setVisibility(View.VISIBLE);
         viewBinding.importProgressRightButton.setText(getString(R.string.generic_ok));
         viewBinding.importProgressRightButton.setOnClickListener((view) -> {
@@ -155,19 +169,37 @@ public class ImportActivity extends FragmentActivity {
             finish();
         });
 
-        viewBinding.importProgressAlertMsg.setVisibility(View.VISIBLE);
-        viewBinding.importProgressAlertIcon.setVisibility(View.VISIBLE);
         if (summary.getErrorCount() > 0) {
+            toggleUIEndWithErrors();
+        } else {
+            toggleUIEndOk();
+        }
+    }
+
+    private void toggleUIEndWithErrors() {
+        viewBinding.importProgressLeftButton.setVisibility(View.VISIBLE);
+        viewBinding.importProgressLeftButton.setText(getString(R.string.generic_show_errors));
+        viewBinding.importProgressLeftButton.setOnClickListener((view) -> ErrorListDialog.showDialog(getSupportFragmentManager(), getString(R.string.import_error_list_dialog_title), summary.getFileErrors()));
+        viewBinding.importProgressAlertIcon.setImageDrawable(ContextCompat.getDrawable(this, R.drawable.ic_report_problem_24));
+        viewBinding.importProgressAlertMsg.setText(getResources().getQuantityString(R.plurals.generic_completed_with_errors, summary.getErrorCount(), summary.getErrorCount()));
+    }
+
+    private void toggleUIEndOk() {
+        viewBinding.importProgressAlertIcon.setImageDrawable(ContextCompat.getDrawable(this, R.drawable.ic_dialog_success_24dp));
+        viewBinding.importProgressAlertMsg.setText(getString(R.string.generic_completed));
+
+        if (summary.getTotalCount() == 1 && summary.getImportedTrackIds().size() == 1) {
             viewBinding.importProgressLeftButton.setVisibility(View.VISIBLE);
-            viewBinding.importProgressLeftButton.setText(getString(R.string.generic_show_errors));
-            viewBinding.importProgressLeftButton.setOnClickListener((view) -> ErrorListDialog.showDialog(getSupportFragmentManager(), getString(R.string.import_error_list_dialog_title), summary.getFileErrors()));
-            viewBinding.importProgressAlertIcon.setImageDrawable(getDrawable(R.drawable.ic_report_problem_24));
-            String msg = getResources().getQuantityString(R.plurals.generic_completed_with_errors, summary.getErrorCount(), summary.getErrorCount());
-            viewBinding.importProgressAlertMsg.setText(msg);
+            viewBinding.importProgressLeftButton.setText(getString(R.string.generic_open_track));
+            viewBinding.importProgressLeftButton.setOnClickListener((view) -> {
+                Intent newIntent = IntentUtils.newIntent(ImportActivity.this, TrackRecordedActivity.class)
+                        .putExtra(TrackRecordedActivity.EXTRA_TRACK_ID, summary.getImportedTrackIds().get(0));
+                startActivity(newIntent);
+                getViewModelStore().clear();
+                finish();
+            });
         } else {
             viewBinding.importProgressLeftButton.setVisibility(View.GONE);
-            viewBinding.importProgressAlertIcon.setImageDrawable(getDrawable(R.drawable.ic_dialog_success_24dp));
-            viewBinding.importProgressAlertMsg.setText(getString(R.string.generic_completed));
         }
     }
 }

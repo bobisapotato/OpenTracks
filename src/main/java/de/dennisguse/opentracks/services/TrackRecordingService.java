@@ -25,6 +25,8 @@ import android.content.SharedPreferences;
 import android.content.SharedPreferences.OnSharedPreferenceChangeListener;
 import android.database.sqlite.SQLiteException;
 import android.net.Uri;
+import android.os.Bundle;
+import android.os.Handler;
 import android.os.IBinder;
 import android.os.PowerManager.WakeLock;
 import android.util.Log;
@@ -46,12 +48,14 @@ import de.dennisguse.opentracks.content.provider.ContentProviderUtils;
 import de.dennisguse.opentracks.content.provider.CustomContentProvider;
 import de.dennisguse.opentracks.content.provider.TrackPointIterator;
 import de.dennisguse.opentracks.content.sensor.SensorDataSet;
+import de.dennisguse.opentracks.io.file.exporter.ExportServiceResultReceiver;
 import de.dennisguse.opentracks.services.handlers.GpsStatusValue;
 import de.dennisguse.opentracks.services.handlers.HandlerServer;
 import de.dennisguse.opentracks.services.sensors.BluetoothRemoteSensorManager;
 import de.dennisguse.opentracks.services.sensors.ElevationSumManager;
 import de.dennisguse.opentracks.services.tasks.AnnouncementPeriodicTaskFactory;
 import de.dennisguse.opentracks.services.tasks.PeriodicTaskExecutor;
+import de.dennisguse.opentracks.settings.SettingsActivity;
 import de.dennisguse.opentracks.stats.TrackStatistics;
 import de.dennisguse.opentracks.stats.TrackStatisticsUpdater;
 import de.dennisguse.opentracks.util.ExportUtils;
@@ -69,7 +73,7 @@ import de.dennisguse.opentracks.util.TrackPointUtils;
  *
  * @author Leif Hendrik Wilden
  */
-public class TrackRecordingService extends Service implements HandlerServer.HandlerServerInterface {
+public class TrackRecordingService extends Service implements HandlerServer.HandlerServerInterface, ExportServiceResultReceiver.Receiver {
 
     private static final String TAG = TrackRecordingService.class.getSimpleName();
 
@@ -348,7 +352,7 @@ public class TrackRecordingService extends Service implements HandlerServer.Hand
 
         trackStatisticsUpdater = new TrackStatisticsUpdater(track.getTrackStatistics().getStartTime_ms());
 
-        try (TrackPointIterator trackPointIterator = contentProviderUtils.getTrackPointLocationIterator(track.getId(), -1L, false)) {
+        try (TrackPointIterator trackPointIterator = contentProviderUtils.getTrackPointLocationIterator(track.getId(), null)) {
             trackStatisticsUpdater.addTrackPoint(trackPointIterator, recordingDistanceInterval);
         } catch (RuntimeException e) {
             Log.e(TAG, "RuntimeException", e);
@@ -431,7 +435,7 @@ public class TrackRecordingService extends Service implements HandlerServer.Hand
             }
         }
 
-        ExportUtils.postWorkoutExport(this, track);
+        ExportUtils.postWorkoutExport(this, track, new ExportServiceResultReceiver(new Handler(), this));
 
         endRecording(true);
     }
@@ -661,6 +665,7 @@ public class TrackRecordingService extends Service implements HandlerServer.Hand
         try {
             if (elevationSumManager != null) {
                 trackPoint.setElevationGain(elevationSumManager.getElevationGain_m());
+                trackPoint.setElevationLoss(elevationSumManager.getElevationLoss_m());
                 elevationSumManager.reset();
             }
             contentProviderUtils.insertTrackPoint(trackPoint, track.getId());
@@ -675,7 +680,6 @@ public class TrackRecordingService extends Service implements HandlerServer.Hand
         }
         voiceExecutor.update();
     }
-
 
     /**
      * Updates the recording track time.
@@ -712,6 +716,17 @@ public class TrackRecordingService extends Service implements HandlerServer.Hand
         }
 
         return elevationSumManager.getElevationGain_m();
+    }
+
+    /**
+     * Returns the relative elevation loss (since last trackpoint).
+     */
+    Float getElevationLoss_m() {
+        if (elevationSumManager == null || !elevationSumManager.isConnected()) {
+            return null;
+        }
+
+        return elevationSumManager.getElevationLoss_m();
     }
 
     private void showNotification(boolean isGpsStarted) {
@@ -751,4 +766,16 @@ public class TrackRecordingService extends Service implements HandlerServer.Hand
     public GpsStatusValue getGpsStatus() {
         return handlerServer.getGpsStatus();
     }
+
+    @Override
+    public void onReceiveResult(final int resultCode, final Bundle resultData) {
+        Log.w(TAG, "onReceiveResult: " + resultCode);
+        if (resultCode != ExportServiceResultReceiver.RESULT_CODE_SUCCESS) {
+            Intent intent = new Intent(this, SettingsActivity.class);
+            intent.putExtra(SettingsActivity.EXTRAS_CHECK_EXPORT_DIRECTORY, true);
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(intent);
+        }
+    }
+
 }

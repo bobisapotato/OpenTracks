@@ -2,6 +2,8 @@
 
 _OpenTracks_ is a sport tracking application that completely respects your privacy.
 
+[![Awesome Humane Tech](https://raw.githubusercontent.com/humanetech-community/awesome-humane-tech/main/humane-tech-badge.svg?sanitize=true)](https://github.com/humanetech-community/awesome-humane-tech)
+
 <table>
     <tr>
         <th>Free</th>
@@ -20,8 +22,8 @@ _OpenTracks_ is a sport tracking application that completely respects your priva
             </a>
         </td>
         <td align="center">
-            <a href="https://www.transifex.com/opentracks/opentracks/">
-                Transifex
+            <a href="https://weblate.bubu1.eu/engage/OpenTracks/">
+                <img src="https://weblate.bubu1.eu/widgets/OpenTracks/-/opentracks/svg-badge.svg" alt="Translation status" />
             </a>
         </td>
     </tr>
@@ -53,6 +55,7 @@ _OpenTracks_ is a sport tracking application that completely respects your priva
 * __Bluetooth LE sensors:__
   * heart rate
   * cycling: speed and cadence
+  * cycling: power meter
 * __Export data:__ export tracks either as KMZ (incl. photos), KML or GPX
 * __No Internet access:__ Internet is not used
 * __Voice announcements__

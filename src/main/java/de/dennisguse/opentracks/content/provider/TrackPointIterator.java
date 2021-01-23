@@ -18,16 +18,14 @@ public class TrackPointIterator implements Iterator<TrackPoint>, AutoCloseable {
 
     private final ContentProviderUtils contentProviderUtils;
     private final Track.Id trackId;
-    private final boolean descending;
     private final CachedTrackPointsIndexes indexes;
-    private long lastTrackPointId = -1L;
+    private TrackPoint.Id lastTrackPointId = null;
     private Cursor cursor;
 
 
-    public TrackPointIterator(ContentProviderUtils contentProviderUtils, Track.Id trackId, long startTrackPointId, boolean descending) {
+    public TrackPointIterator(ContentProviderUtils contentProviderUtils, Track.Id trackId, TrackPoint.Id startTrackPointId) {
         this.contentProviderUtils = contentProviderUtils;
         this.trackId = trackId;
-        this.descending = descending;
 
         cursor = getCursor(startTrackPointId);
         indexes = cursor != null ? new CachedTrackPointsIndexes(cursor)
@@ -39,23 +37,19 @@ public class TrackPointIterator implements Iterator<TrackPoint>, AutoCloseable {
      *
      * @param trackPointId the starting track point id
      */
-    private Cursor getCursor(long trackPointId) {
-        return contentProviderUtils.getTrackPointCursor(trackId, trackPointId, contentProviderUtils.getDefaultCursorBatchSize(), descending);
+    private Cursor getCursor(TrackPoint.Id trackPointId) {
+        return contentProviderUtils.getTrackPointCursor(trackId, trackPointId, contentProviderUtils.getDefaultCursorBatchSize());
     }
 
     /**
      * Advances the cursor to the next batch. Returns true if successful.
      */
     private boolean advanceCursorToNextBatch() {
-        long trackPointId = lastTrackPointId == -1L ? -1L : lastTrackPointId + (descending ? -1 : 1);
+        TrackPoint.Id trackPointId = lastTrackPointId == null ? null : new TrackPoint.Id(lastTrackPointId.getId() + 1);
         Log.d(TAG, "Advancing track point id: " + trackPointId);
         cursor.close();
         cursor = getCursor(trackPointId);
         return cursor != null;
-    }
-
-    public long getTrackPointId() {
-        return lastTrackPointId;
     }
 
     @Override
@@ -85,7 +79,7 @@ public class TrackPointIterator implements Iterator<TrackPoint>, AutoCloseable {
                 throw new NoSuchElementException();
             }
         }
-        lastTrackPointId = cursor.getLong(indexes.idIndex);
+        lastTrackPointId = new TrackPoint.Id(cursor.getLong(indexes.idIndex));
         return ContentProviderUtils.fillTrackPoint(cursor, indexes);
     }
 

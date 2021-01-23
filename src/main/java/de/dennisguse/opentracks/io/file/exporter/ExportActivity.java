@@ -24,7 +24,6 @@ import android.view.View;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
-import androidx.appcompat.widget.Toolbar;
 import androidx.core.content.ContextCompat;
 import androidx.documentfile.provider.DocumentFile;
 import androidx.fragment.app.FragmentActivity;
@@ -73,7 +72,6 @@ public class ExportActivity extends FragmentActivity implements ExportServiceRes
 
     private ExportServiceResultReceiver resultReceiver;
 
-    private String directoryDisplayName;
     private List<String> directoryFiles;
 
     private int trackExportSuccessCount;
@@ -144,7 +142,7 @@ public class ExportActivity extends FragmentActivity implements ExportServiceRes
         contentProviderUtils = new ContentProviderUtils(this);
 
         DocumentFile documentFile = DocumentFile.fromTreeUri(this, directoryUri);
-        directoryDisplayName = FileUtils.getPath(documentFile);
+        String directoryDisplayName = FileUtils.getPath(documentFile);
 
         viewBinding.toolbar.toolbar.setTitle(getString(R.string.export_progress_message, directoryDisplayName));
 
@@ -270,7 +268,14 @@ public class ExportActivity extends FragmentActivity implements ExportServiceRes
         viewBinding.exportProgressTotal.setText("" + trackExportTotalCount);
 
         viewBinding.exportProgressBar.setProgress((int) ((float) done / (float) trackExportTotalCount * 100f));
-        viewBinding.exportProgressSummary.setText(getString(R.string.export_progress_review, getTotalDone(), trackExportSuccessCount, trackExportOverwrittenCount, trackExportSkippedCount, trackExportErrorCount));
+        viewBinding.exportProgressSummaryNew.setText(String.valueOf(trackExportSuccessCount));
+        viewBinding.exportProgressSummaryOverwrite.setText(String.valueOf(trackExportOverwrittenCount));
+        viewBinding.exportProgressSummarySkip.setText(String.valueOf(trackExportSkippedCount));
+        viewBinding.exportProgressSummaryErrors.setText(String.valueOf(trackExportErrorCount));
+        viewBinding.exportProgressSummaryNewGroup.setVisibility(trackExportSuccessCount > 0 ? View.VISIBLE : View.GONE);
+        viewBinding.exportProgressSummaryOverwriteGroup.setVisibility(trackExportOverwrittenCount > 0 ? View.VISIBLE : View.GONE);
+        viewBinding.exportProgressSummarySkipGroup.setVisibility(trackExportSkippedCount > 0 ? View.VISIBLE : View.GONE);
+        viewBinding.exportProgressSummaryErrorsGroup.setVisibility(trackExportErrorCount > 0 ? View.VISIBLE : View.GONE);
     }
 
     private void onExportCompleted(Track.Id trackId) {
@@ -361,7 +366,7 @@ public class ExportActivity extends FragmentActivity implements ExportServiceRes
         public boolean resolve() {
             if (autoConflict == CONFLICT_NONE) {
                 Track track = contentProviderUtils.getTrack(trackId);
-                viewBinding.exportProgressAlertIcon.setImageDrawable(getDrawable(R.drawable.ic_report_problem_24));
+                viewBinding.exportProgressAlertIcon.setImageDrawable(ContextCompat.getDrawable(ExportActivity.this, R.drawable.ic_report_problem_24));
                 viewBinding.exportProgressAlertMsg.setText(getString(R.string.export_track_already_exists_msg, track.getName()));
                 setConflictVisibility(View.VISIBLE);
                 return false;

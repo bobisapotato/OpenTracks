@@ -38,12 +38,12 @@ limitations under the License.
         a)
         (live updates) Install <a href="https://github.com/OpenTracksApp/OSMDashboard">OSMDashboard</a>.
         It provides online or offline maps via <a href="https://www.openstreetmap.org">OpenStreetMap</a>.\n
-        Actually, OSMDashboard is a separate app that only can access (temporarily) access the data of track(s) that are going to be shown.
+        Actually, OSMDashboard is a separate app that only can access (temporarily) the data of track(s) that are going to be shown.
 
         \n
         b)
         Via a "normal" map application (e.g., <a href="http://osmand.net/">OsmAnd</a> and <a href="https://maps.me/">MAPS.ME</a>).
-        Those app need to support the KMZ file format (only locations and timestamps).
+        These apps need to support the KMZ file format (only locations and timestamps).
         In fact, an app needs to support <i>ACTION_VIEW</i> with MIME <i>application/vnd.google-earth.kmz</i>.
     </string>
 
@@ -77,7 +77,7 @@ limitations under the License.
         What you can do:\n
         a) check if GPS is enabled,\n
         b) improve GPS reception (e.g., go outdoors),\n
-        c) check if with <a href="https://f-droid.org/en/packages/com.android.gpstest.osmdroid/">GPSTest</a> app, and\n
+        c) check with <a href="https://f-droid.org/en/packages/com.android.gpstest.osmdroid/">GPSTest</a> app, and\n
         d) disable power saving.\n
         \n
         If everything does not help please report a bug.
@@ -176,6 +176,7 @@ limitations under the License.
     <string name="description_average_pace_in_minute">Average pace: %1$s min/km (%2$s min/mi)</string>
     <string name="description_average_speed">Average speed: %1$.2f km/h (%2$.1f mi/h)</string>
     <string name="description_elevation_gain">Elevation gain: %1$d m (%2$d ft)</string>
+    <string name="description_elevation_loss">Elevation loss: %1$d m (%2$d ft)</string>
     <string name="description_elevation_imperial">Elevation (ft)</string>
     <string name="description_elevation_metric">Elevation (m)</string>
     <string name="description_fastest_pace_in_minute">Fastest pace: %1$s min/km (%2$s min/mi)</string>
@@ -212,6 +213,7 @@ limitations under the License.
     <string name="export_with_photos">with photos</string>
     <string name="export_without_photos">without photos</string>
     <string name="export_error">Exported %1$d of %2$s to %3$s</string>
+    <string name="export_error_post_workout">Post-workout export failed, please check the export directory.</string>
     <string name="export_option">as %1$s to %2$s</string>
     <string name="export_progress_message">Exporting to %1$s&#8230;</string>
     <string name="export_success">Exported %1$s to %2$s</string>
@@ -219,13 +221,10 @@ limitations under the License.
     <string name="export_track_already_exists_msg">The track %1$s already exists at the destination directory.</string>
     <string name="export_all_do_it_for_all">do it for all conflicts</string>
     <string name="export_track_errors">Tracks not exported</string>
-    <string name="export_progress_review">
-        Total exported tracks: %1$d\n
-        - New tracks exported: %2$d\n
-        - Tracks overwritten: %3$d\n
-        - Tracks skipped: %4$d\n
-        - Errors: %5$d
-    </string>
+    <string name="export_progress_summary_new_msg">New tracks exported</string>
+    <string name="export_progress_summary_overwrite_msg">Tracks overwritten</string>
+    <string name="export_progress_summary_skip_msg">Tracks skipped</string>
+    <string name="export_progress_summary_errors_msg">Errors</string>
     <!-- External Storage -->
     <!-- Files -->
     <string name="files_few">%1$d files</string>
@@ -246,6 +245,7 @@ limitations under the License.
     <string name="generic_name_line">Name: %1$s</string>
     <string name="generic_no">No</string>
     <string name="generic_ok">OK</string>
+    <string name="generic_open_track">Open Track</string>
     <string name="generic_paused">Paused</string>
     <string name="generic_progress_title">Please wait&#8230;</string>
     <string name="generic_recording">Recording&#8230;</string>
@@ -285,13 +285,16 @@ limitations under the License.
     <string name="image_stop">Stop</string>
     <string name="image_track">Track</string>
     <!-- Import -->
+    <string name="import_thread_interrupted">Thread interrupted</string>
     <string name="import_unsupported_format">Unsupported file format</string>
     <string name="import_parser_error">Parser error: %1$s</string>
     <string name="import_unable_to_import_file">Unable to import file: %1$s</string>
+    <string name="import_no_kml_file_found">No doc.kml file found in KMZ</string>
     <string name="import_error_info">%1$s: %2$s</string>
     <string name="import_error_list_dialog_title">Files not imported</string>
     <string name="import_file_imported">File %1$s imported</string>
     <string name="import_error">Imported %1$d of %2$s from %3$s</string>
+    <string name="import_prevent_reimport">You have set prevent re-import track</string>
     <string name="import_no_directory">%1$s does not exist</string>
     <string name="import_no_file">There were no files to import. Connect your device to your computer and place the files to import in %1$s.</string>
     <string name="import_no_file_title">Import files</string>
@@ -299,12 +302,9 @@ limitations under the License.
     <string name="import_selection_option">All %1$s</string>
     <string name="import_selection_title">Import from external storage</string>
     <string name="import_success">Imported %1$s from %2$s</string>
-    <string name="import_progress_review">
-        Total imported files: %1$d\n
-        - Files imported: %2$d\n
-        - Already exists: %3$d\n
-        - Errors: %4$d
-    </string>
+    <string name="import_progress_summary_ok_msg">Files imported</string>
+    <string name="import_progress_summary_exists_msg">Already exists</string>
+    <string name="import_progress_summary_errors_msg">Errors</string>
     <!-- Marker -->
     <string name="marker_add_error">Unable to insert a marker. No GPS signal. Try again.</string>
     <string name="marker_add_success">A marker was inserted</string>
@@ -430,7 +430,7 @@ limitations under the License.
     <string name="settings_stats_units_metric">Metric (km, m)</string>
     <string name="settings_stats_units_title">Preferred units</string>
 
-    <string name="settings_prevent_reimport_tracks_title" translatable="false">Prevent re-import of tracks</string>
+    <string name="settings_prevent_reimport_tracks_title">Prevent re-import of tracks</string>
     <!-- Share Track -->
     <string name="share_track_share_file">Share track file</string>
     <string name="share_track_share_file_body">I think you might be interested in this track.\n\n%1$s</string>
@@ -443,6 +443,7 @@ limitations under the License.
     <string name="stats_elevation">Elevation</string>
     <string name="stats_fastest_pace">Fastest pace</string>
     <string name="stats_gain">Gain</string>
+    <string name="stats_loss">Loss</string>
     <string name="stats_grade">Grade</string>
     <string name="stats_latitude">Latitude</string>
     <string name="stats_longitude">Longitude</string>
@@ -505,8 +506,11 @@ limitations under the License.
     <string name="value_always">Always</string>
     <string name="value_float_feet">%1$.2f ft</string>
     <string name="value_float_kilometer">%1$.2f km</string>
+    <string name="value_float_kilometer_hour">%1$.2f km/h</string>
     <string name="value_float_meter">%1$.2f m</string>
     <string name="value_float_mile">%1$.2f mi</string>
+    <string name="value_float_mile_hour">%1$.2f mph</string>
+
     <string name="value_float_mile_poor_gps">%1$.1f mi (poor GPS)</string>
     <string name="value_integer_feet">%1$d ft</string>
     <string name="value_integer_feet_excellent_gps">%1$d ft (excellent GPS)</string>
@@ -522,6 +526,8 @@ limitations under the License.
     <string name="value_integer_minute">%1$d min</string>
     <string name="value_integer_percent">%1$d %%</string>
     <string name="value_integer_second">%1$d s</string>
+    <string name="value_pace_mile">%1$d:%2$02d min/mi</string>
+    <string name="value_pace_kilometer">%1$d:%2$02d min/km</string>
     <string name="value_none">None</string>
     <string name="value_off">Off</string>
     <string name="value_smallest">Smallest</string>
@@ -631,8 +637,8 @@ limitations under the License.
     <string name="share_image_subject">I would like to share an image with you</string>
     <string name="share_image_body">I think you might be interested in this image.</string>
 
-    <string name="hold_to_stop">Hold to stop recording</string>
-    <string name="hold_to_pause">Hold to pause recording</string>
+    <string name="hold_to_stop">Hold to stop</string>
+    <string name="hold_to_pause">Hold to pause</string>
     <string name="toast_message_instant_track_was_exported">Last track exported</string>
 
     <string name="instant_export_enabled_summary">Export track to storage after recording is finished</string>

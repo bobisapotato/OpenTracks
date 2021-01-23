@@ -8,8 +8,6 @@ import android.bluetooth.le.ScanResult;
 import android.bluetooth.le.ScanSettings;
 import android.content.Context;
 import android.content.DialogInterface;
-import android.graphics.drawable.Animatable;
-import android.graphics.drawable.Drawable;
 import android.os.Bundle;
 import android.os.ParcelUuid;
 import android.text.TextUtils;
@@ -18,13 +16,15 @@ import android.util.Log;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AlertDialog;
-import androidx.core.content.ContextCompat;
 import androidx.preference.DialogPreference;
 import androidx.preference.PreferenceDialogFragmentCompat;
+import androidx.vectordrawable.graphics.drawable.AnimatedVectorDrawableCompat;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import de.dennisguse.opentracks.R;
 import de.dennisguse.opentracks.settings.BluetoothLeAdapter;
@@ -39,7 +39,7 @@ public abstract class BluetoothLeSensorPreference extends DialogPreference {
 
     private static final String TAG = BluetoothLeSensorPreference.class.getSimpleName();
 
-    private static final String ARG_BLUETOOTH_UUID = "bluetoothUUID";
+    private static final String ARG_BLE_SERVICE_UUIDS = "bluetoothUUID";
 
     private static final int DEVICE_NONE_RESOURCEID = R.string.value_none;
 
@@ -94,6 +94,8 @@ public abstract class BluetoothLeSensorPreference extends DialogPreference {
 
     public static class BluetoothLeSensorPreferenceDialog extends PreferenceDialogFragmentCompat {
 
+        private AnimatedVectorDrawableCompat bluetoothIcon;
+
         private int selectedEntryIndex;
         private final BluetoothLeAdapter listAdapter = new BluetoothLeAdapter();
 
@@ -109,8 +111,9 @@ public abstract class BluetoothLeSensorPreference extends DialogPreference {
 
             @Override
             public void onBatchScanResults(List<ScanResult> results) {
-                for (ScanResult scanResult : results) {
-                    listAdapter.add(scanResult.getDevice());
+                for (ScanResult result : results) {
+                    Log.d(TAG, "Found device " + result.getDevice().getName() + " " + result);
+                    listAdapter.add(result.getDevice());
                 }
             }
 
@@ -124,10 +127,14 @@ public abstract class BluetoothLeSensorPreference extends DialogPreference {
         };
 
         public static BluetoothLeSensorPreferenceDialog newInstance(String preferenceKey, UUID sensorUUID) {
+            return newInstance(preferenceKey, Collections.singletonList(sensorUUID));
+        }
+
+        public static BluetoothLeSensorPreferenceDialog newInstance(String preferenceKey, List<UUID> sensorUUIDs) {
             final BluetoothLeSensorPreferenceDialog fragment = new BluetoothLeSensorPreferenceDialog();
             final Bundle b = new Bundle(1);
             b.putString(ARG_KEY, preferenceKey);
-            b.putSerializable(ARG_BLUETOOTH_UUID, sensorUUID);
+            b.putParcelableArrayList(ARG_BLE_SERVICE_UUIDS, new ArrayList<>(sensorUUIDs.stream().map(ParcelUuid::new).collect(Collectors.toList())));
             fragment.setArguments(b);
             return fragment;
         }
@@ -136,8 +143,12 @@ public abstract class BluetoothLeSensorPreference extends DialogPreference {
         public void onCreate(Bundle savedInstanceState) {
             super.onCreate(savedInstanceState);
 
-            UUID sensorUUID = (UUID) getArguments().getSerializable(ARG_BLUETOOTH_UUID);
-            Log.i(TAG, "UUID: " + sensorUUID);
+            List<ParcelUuid> serviceUUIDs = getArguments().getParcelableArrayList(ARG_BLE_SERVICE_UUIDS);
+
+            // Don't know why: need to load the drawable _twice_, so that animation is actually started.
+            bluetoothIcon = AnimatedVectorDrawableCompat.create(getContext(), R.drawable.ic_bluetooth_searching_animated_24dp);
+            bluetoothIcon = AnimatedVectorDrawableCompat.create(getContext(), R.drawable.ic_bluetooth_searching_animated_24dp);
+            bluetoothIcon.start();
 
             BluetoothAdapter bluetoothAdapter = BluetoothUtils.getAdapter(getContext());
             if (bluetoothAdapter == null || !bluetoothAdapter.isEnabled()) {
@@ -148,7 +159,7 @@ public abstract class BluetoothLeSensorPreference extends DialogPreference {
             }
 
             if (bluetoothAdapter.isDiscovering()) {
-                Log.i(TAG, "Cancelling ongoing B<aluetooth discovery.");
+                Log.i(TAG, "Cancelling ongoing Bluetooth discovery.");
                 bluetoothAdapter.cancelDiscovery();
             }
 
@@ -170,9 +181,7 @@ public abstract class BluetoothLeSensorPreference extends DialogPreference {
                 selectedEntryIndex = 1;
             }
 
-            ScanFilter.Builder scanFilterBuilder = new ScanFilter.Builder().setServiceUuid(new ParcelUuid(sensorUUID));
-            List<ScanFilter> scanFilter = new ArrayList<>();
-            scanFilter.add(scanFilterBuilder.build());
+            List<ScanFilter> scanFilter = serviceUUIDs.stream().map(it -> new ScanFilter.Builder().setServiceUuid(it).build()).collect(Collectors.toList());
 
             ScanSettings.Builder scanSettingsBuilder = new ScanSettings.Builder();
             scanSettingsBuilder.setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY);
@@ -193,9 +202,7 @@ public abstract class BluetoothLeSensorPreference extends DialogPreference {
                         dialog.dismiss();
                     });
 
-            Drawable icon = ContextCompat.getDrawable(getContext(), R.drawable.ic_bluetooth_searching_animated_24dp);
-            ((Animatable) icon).start();
-            builder.setIcon(icon);
+            builder.setIcon(bluetoothIcon);
 
             builder.setPositiveButton(null, null);
         }
@@ -213,6 +220,13 @@ public abstract class BluetoothLeSensorPreference extends DialogPreference {
                     preference.setValue(value);
                 }
             }
+        }
+
+        @Override
+        public void onDestroy() {
+            super.onDestroy();
+            bluetoothIcon = null;
+            scanner = null;
         }
     }
 }

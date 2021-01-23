@@ -17,15 +17,22 @@ package de.dennisguse.opentracks.content.data;
 
 import android.location.Location;
 import android.location.LocationManager;
+import android.os.Parcel;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+
+import java.util.Objects;
 
 /**
  * This class extends the standard Android location with extra information.
  *
  * @author Sandor Dornbush
  */
+//TODO Merge constructors by use case; we have too many.
 public class TrackPoint {
+
+    private TrackPoint.Id id;
 
     private final Location location;
 
@@ -33,6 +40,7 @@ public class TrackPoint {
     private Float cyclingCadence_rpm = null;
     private Float power = null;
     private Float elevationGain = null;
+    private Float elevationLoss = null;
 
     public TrackPoint() {
         this.location = new Location("");
@@ -50,6 +58,7 @@ public class TrackPoint {
         this.power = trackPoint.getPower();
 
         this.elevationGain = trackPoint.getElevationGain();
+        this.elevationLoss = trackPoint.getElevationLoss();
     }
 
     public TrackPoint(double latitude, double longitude, Double altitude, long time) {
@@ -90,8 +99,20 @@ public class TrackPoint {
         return new TrackPoint(resume);
     }
 
-    public @NonNull
-    Location getLocation() {
+    /**
+     * May be null if the track was not loaded from the database.
+     */
+    @Nullable
+    public TrackPoint.Id getId() {
+        return id;
+    }
+
+    public void setId(TrackPoint.Id id) {
+        this.id = id;
+    }
+
+    @Nullable
+    public Location getLocation() {
         return location;
     }
 
@@ -105,6 +126,18 @@ public class TrackPoint {
 
     public void setElevationGain(Float elevationGain) {
         this.elevationGain = elevationGain;
+    }
+
+    public boolean hasElevationLoss() {
+        return elevationLoss != null;
+    }
+
+    public float getElevationLoss() {
+        return elevationLoss;
+    }
+
+    public void setElevationLoss(Float elevationLoss) {
+        this.elevationLoss = elevationLoss;
     }
 
     public double getLatitude() {
@@ -236,5 +269,42 @@ public class TrackPoint {
     @Override
     public String toString() {
         return "time=" + getTime() + ": lat=" + getLatitude() + " lng=" + getLongitude() + " acc=" + getAccuracy();
+    }
+
+    public static class Id {
+
+        private final long id;
+
+        public Id(long id) {
+            this.id = id;
+        }
+
+        protected Id(Parcel in) {
+            id = in.readLong();
+        }
+
+        //TOOD Limit visibility to TrackRecordingService / ContentProvider
+        public long getId() {
+            return id;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+            TrackPoint.Id id1 = (TrackPoint.Id) o;
+            return id == id1.id;
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(id);
+        }
+
+        @NonNull
+        @Override
+        public String toString() {
+            return String.valueOf(id);
+        }
     }
 }

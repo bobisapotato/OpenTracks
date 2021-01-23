@@ -16,7 +16,6 @@
 package de.dennisguse.opentracks.io.file.exporter;
 
 import android.content.Context;
-import android.database.Cursor;
 import android.location.Location;
 
 import java.io.OutputStream;
@@ -51,6 +50,7 @@ public class KmlTrackWriter implements TrackWriter {
     public static final String EXTENDED_DATA_TYPE_HEART_RATE = "heart_rate";
     public static final String EXTENDED_DATA_TYPE_POWER = "power";
     public static final String EXTENDED_DATA_TYPE_ELEVATION_GAIN = "elevation_gain";
+    public static final String EXTENDED_DATA_TYPE_ELEVATION_LOSS = "elevation_loss";
 
     private static final String MARKER_ICON = "http://maps.google.com/mapfiles/kml/pushpin/blue-pushpin.png";
     private static final String START_ICON = "http://maps.google.com/mapfiles/kml/paddle/grn-circle.png";
@@ -70,6 +70,7 @@ public class KmlTrackWriter implements TrackWriter {
     private final List<Float> cadenceList = new ArrayList<>();
     private final List<Float> heartRateList = new ArrayList<>();
     private final List<Float> elevationGainList = new ArrayList<>();
+    private final List<Float> elevationLossList = new ArrayList<>();
 
     private TrackPoint startTrackPoint;
 
@@ -167,7 +168,7 @@ public class KmlTrackWriter implements TrackWriter {
     @Override
     public void writeMarker(Marker marker) {
         if (printWriter != null && exportTrackDetail) {
-            boolean existsPhoto = FileUtils.getPhotoFileIfExists(context, marker.getTrackId(), marker.getPhotoURI()) != null;
+            boolean existsPhoto = FileUtils.buildInternalPhotoFile(context, marker.getTrackId(), marker.getPhotoURI()) != null;
             if (marker.hasPhoto() && exportPhotos && existsPhoto) {
                 float heading = getHeading(marker.getTrackId(), marker.getLocation());
                 writePhotoOverlay(marker, heading);
@@ -262,6 +263,9 @@ public class KmlTrackWriter implements TrackWriter {
                 if (elevationGainList.size() > 0) {
                     writeSimpleArrayData(elevationGainList, EXTENDED_DATA_TYPE_ELEVATION_GAIN);
                 }
+                if (elevationLossList.size() > 0) {
+                    writeSimpleArrayData(elevationLossList, EXTENDED_DATA_TYPE_ELEVATION_LOSS);
+                }
             }
             printWriter.println("</SchemaData>");
             printWriter.println("</ExtendedData>");
@@ -294,6 +298,9 @@ public class KmlTrackWriter implements TrackWriter {
                 }
                 if (trackPoint.hasElevationGain()) {
                     elevationGainList.add(trackPoint.getElevationGain());
+                }
+                if (trackPoint.hasElevationLoss()) {
+                    elevationLossList.add(trackPoint.getElevationLoss());
                 }
             }
         }
@@ -391,19 +398,16 @@ public class KmlTrackWriter implements TrackWriter {
      * @param location the location
      */
     private float getHeading(Track.Id trackId, Location location) {
-        long trackPointId = contentProviderUtils.getTrackPointId(trackId, location);
-        if (trackPointId == -1L) {
+        TrackPoint.Id trackPointId = contentProviderUtils.getTrackPointId(trackId, location);
+        if (trackPointId == null) {
             return location.getBearing();
         }
-        TrackPoint viewLocation;
-        try (Cursor cursor = contentProviderUtils.getTrackPointCursor(trackId, trackPointId, 10, true)) {
-            if (cursor == null || cursor.getCount() == 0) {
-                return location.getBearing();
-            }
-            cursor.moveToPosition(cursor.getCount() - 1);
-            viewLocation = contentProviderUtils.createTrackPoint(cursor);
+        TrackPoint viewLocation = contentProviderUtils.getLastValidTrackPoint(trackId);
+        if (viewLocation != null) {
+            return viewLocation.bearingTo(location);
         }
-        return viewLocation.bearingTo(location);
+
+        return location.getBearing();
     }
 
     private String getCoordinates(Location location, String separator) {

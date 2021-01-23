@@ -33,18 +33,16 @@ import android.widget.ArrayAdapter;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
+import androidx.lifecycle.ViewModelProvider;
 
-import java.io.File;
 import java.io.FileDescriptor;
 import java.io.IOException;
 
 import de.dennisguse.opentracks.content.data.Marker;
 import de.dennisguse.opentracks.content.data.Track;
-import de.dennisguse.opentracks.content.provider.ContentProviderUtils;
 import de.dennisguse.opentracks.databinding.MarkerEditBinding;
-import de.dennisguse.opentracks.services.TrackRecordingServiceConnection;
-import de.dennisguse.opentracks.util.FileUtils;
 import de.dennisguse.opentracks.util.IntentUtils;
+import de.dennisguse.opentracks.viewmodels.MarkerEditViewModel;
 
 /**
  * An activity to add/edit a marker.
@@ -56,21 +54,20 @@ public class MarkerEditActivity extends AbstractActivity {
     public static final String EXTRA_TRACK_ID = "track_id";
     public static final String EXTRA_MARKER_ID = "marker_id";
 
-    private static final String BUNDLE_PHOTO_URI = "photo_uri";
-
     private static final int CAMERA_REQUEST_CODE = 5;
     private static final int GALLERY_IMG_REQUEST_CODE = 7;
 
     private static final String TAG = MarkerEditActivity.class.getSimpleName();
     private Track.Id trackId;
-    private final TrackRecordingServiceConnection trackRecordingServiceConnection = new TrackRecordingServiceConnection();
     private Marker marker;
 
     private MenuItem insertPhotoMenuItem;
     private MenuItem insertGalleryImgMenuItem;
 
-    private Uri photoUri;
     private boolean hasCamera;
+    private Uri cameraPhotoUri;
+
+    private MarkerEditViewModel viewModel;
 
     // UI elements
     private MarkerEditBinding viewBinding;
@@ -88,82 +85,40 @@ public class MarkerEditActivity extends AbstractActivity {
         ArrayAdapter<CharSequence> adapter = ArrayAdapter.createFromResource(this, R.array.marker_types, android.R.layout.simple_dropdown_item_1line);
         viewBinding.markerEditMarkerType.setAdapter(adapter);
         viewBinding.markerEditPhotoDelete.setOnClickListener(v -> {
-            if (marker != null && marker.hasPhoto()) {
-                marker.setPhotoUrl(null);
-            }
-            viewBinding.markerEditPhoto.setImageBitmap(null);
-            photoUri = null;
-            hideAndShowOptions();
+            viewModel.onPhotoDelete(viewBinding.markerEditName.getText().toString(),
+                    viewBinding.markerEditMarkerType.getText().toString(),
+                    viewBinding.markerEditDescription.getText().toString());
         });
 
-        viewBinding.markerEditCancel.setOnClickListener(v -> finish());
-
-        final boolean isNewMarker = markerId == null;
-
-        setTitle(isNewMarker ? R.string.menu_insert_marker : R.string.menu_edit);
-        viewBinding.markerEditDone.setText(isNewMarker ? R.string.generic_add : R.string.generic_save);
-        viewBinding.markerEditDone.setOnClickListener(v -> {
-            if (isNewMarker) {
-                addMarker();
-            } else {
-                saveMarker();
-            }
+        viewBinding.markerEditCancel.setOnClickListener(v -> {
+            viewModel.onCancel();
             finish();
         });
 
-        if (isNewMarker) {
-            int nextMarkerNumber = trackId == null ? -1 : new ContentProviderUtils(this).getNextMarkerNumber(trackId);
-            if (nextMarkerNumber == -1) {
-                nextMarkerNumber = 0;
-            }
-            viewBinding.markerEditName.setText(getString(R.string.marker_name_format, nextMarkerNumber));
-            viewBinding.markerEditName.selectAll();
-            viewBinding.markerEditMarkerType.setText("");
-            viewBinding.markerEditDescription.setText("");
-        } else {
-            marker = new ContentProviderUtils(this).getMarker(markerId);
-            if (marker == null) {
-                Log.d(TAG, "marker is null");
-                finish();
-                return;
-            }
+        boolean isNewMarker = markerId == null;
+        setTitle(isNewMarker ? R.string.menu_insert_marker : R.string.menu_edit);
+        viewBinding.markerEditDone.setText(isNewMarker ? R.string.generic_add : R.string.generic_save);
+        viewBinding.markerEditDone.setOnClickListener(v -> {
+            viewModel.onDone(viewBinding.markerEditName.getText().toString(),
+                        viewBinding.markerEditMarkerType.getText().toString(),
+                        viewBinding.markerEditDescription.getText().toString());
+            finish();
+        });
+
+        viewModel = new ViewModelProvider(this).get(MarkerEditViewModel.class);
+        viewModel.getMarkerData(trackId, markerId).observe(this, data -> {
+            marker = data;
             viewBinding.markerEditName.setText(marker.getName());
             viewBinding.markerEditMarkerType.setText(marker.getCategory());
             viewBinding.markerEditDescription.setText(marker.getDescription());
             if (marker.hasPhoto()) {
-                photoUri = marker.getPhotoURI();
+                setMarkerImageView(marker.getPhotoURI());
+            } else {
+                viewBinding.markerEditPhoto.setImageDrawable(null);
             }
-        }
 
-        if (savedInstanceState != null) {
-            photoUri = savedInstanceState.getParcelable(BUNDLE_PHOTO_URI);
-            if (marker != null) {
-                marker.setPhotoUrl(photoUri != null ? photoUri.toString() : null);
-            }
-        }
-        if (photoUri != null) {
-            setMarkerImageView(photoUri);
-        }
-
-        hideAndShowOptions();
-    }
-
-    @Override
-    protected void onStart() {
-        super.onStart();
-        trackRecordingServiceConnection.startConnection(this);
-    }
-
-    @Override
-    protected void onSaveInstanceState(@NonNull Bundle outState) {
-        super.onSaveInstanceState(outState);
-        outState.putParcelable(BUNDLE_PHOTO_URI, photoUri);
-    }
-
-    @Override
-    protected void onStop() {
-        super.onStop();
-        trackRecordingServiceConnection.unbind(this);
+            hideAndShowOptions();
+        });
     }
 
     @Override
@@ -186,16 +141,17 @@ public class MarkerEditActivity extends AbstractActivity {
 
     @Override
     public boolean onOptionsItemSelected(@NonNull MenuItem item) {
-        switch (item.getItemId()) {
-            case R.id.marker_edit_insert_photo:
-                createMarkerWithPicture();
-                return true;
-            case R.id.marker_edit_insert_gallery_img:
-                createMarkerWithGalleryImage();
-                return true;
-            default:
-                return super.onOptionsItemSelected(item);
+        if (item.getItemId() == R.id.marker_edit_insert_photo) {
+            createMarkerWithPicture();
+            return true;
         }
+
+        if (item.getItemId() == R.id.marker_edit_insert_gallery_img) {
+            createMarkerWithGalleryImage();
+            return true;
+        }
+
+        return super.onOptionsItemSelected(item);
     }
 
     @Override
@@ -205,26 +161,20 @@ public class MarkerEditActivity extends AbstractActivity {
                 Toast.makeText(this, R.string.marker_add_photo_canceled, Toast.LENGTH_LONG).show();
                 return;
             } else if (resultCode == RESULT_OK) {
-                setMarkerImageView(photoUri);
+                viewModel.onNewCameraPhoto(cameraPhotoUri,
+                        viewBinding.markerEditName.getText().toString(),
+                        viewBinding.markerEditMarkerType.getText().toString(),
+                        viewBinding.markerEditDescription.getText().toString());
             }
         } else if (requestCode == GALLERY_IMG_REQUEST_CODE) {
             if (resultCode == RESULT_CANCELED) {
                 Toast.makeText(this, R.string.marker_add_photo_canceled, Toast.LENGTH_LONG).show();
                 return;
-            } else if (resultCode == RESULT_OK)  {
-                Uri srcUri = data.getData();
-                try (ParcelFileDescriptor parcelFd = getContentResolver().openFileDescriptor(srcUri, "r")) {
-                    FileDescriptor srcFd = parcelFd.getFileDescriptor();
-                    File dstFile = new File(FileUtils.getImageUrl(this, getTrackId()));
-                    FileUtils.copy(srcFd, dstFile);
-
-                    photoUri = FileUtils.getUriForFile(this, dstFile);
-                    setMarkerImageView(photoUri);
-                } catch(Exception e) {
-                    Log.e(TAG, e.getMessage());
-                    Toast.makeText(this, R.string.marker_add_canceled, Toast.LENGTH_LONG).show();
-                    return;
-                }
+            } else if (resultCode == RESULT_OK) {
+                viewModel.onNewGalleryPhoto(data.getData(),
+                        viewBinding.markerEditName.getText().toString(),
+                        viewBinding.markerEditMarkerType.getText().toString(),
+                        viewBinding.markerEditDescription.getText().toString());
             }
         }
         super.onActivityResult(requestCode, resultCode, data);
@@ -232,11 +182,11 @@ public class MarkerEditActivity extends AbstractActivity {
 
     /**
      * Checks and hide/shows all buttons/options about marker photo options.
-     *
+     * <p>
      * If a photo is set then one's options are shown, otherwise another ones are shown.
      */
     private void hideAndShowOptions() {
-        boolean isPhotoSet = (marker != null && marker.hasPhoto()) || photoUri != null;
+        boolean isPhotoSet = (marker != null && marker.hasPhoto());
         if (insertPhotoMenuItem != null && insertGalleryImgMenuItem != null) {
             insertPhotoMenuItem.setVisible(!isPhotoSet);
             insertGalleryImgMenuItem.setVisible(!isPhotoSet);
@@ -265,29 +215,12 @@ public class MarkerEditActivity extends AbstractActivity {
 
     private void createMarkerWithPicture() {
         Pair<Intent, Uri> intentAndPhotoUri = IntentUtils.createTakePictureIntent(this, getTrackId());
-        photoUri = intentAndPhotoUri.second;
+        cameraPhotoUri = intentAndPhotoUri.second;
         startActivityForResult(intentAndPhotoUri.first, CAMERA_REQUEST_CODE);
     }
 
     private void createMarkerWithGalleryImage() {
         Intent intent = new Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI);
         startActivityForResult(intent, GALLERY_IMG_REQUEST_CODE);
-    }
-
-    private void addMarker() {
-        trackRecordingServiceConnection.addMarker(this,
-                viewBinding.markerEditName.getText().toString(),
-                viewBinding.markerEditMarkerType.getText().toString(),
-                viewBinding.markerEditDescription.getText().toString(),
-                photoUri != null ? photoUri.toString() : null);
-    }
-
-    private void saveMarker() {
-        marker.setName(viewBinding.markerEditName.getText().toString());
-        marker.setCategory(viewBinding.markerEditMarkerType.getText().toString());
-        marker.setDescription(viewBinding.markerEditDescription.getText().toString());
-        marker.setPhotoUrl(photoUri != null ? photoUri.toString() : null);
-
-        new ContentProviderUtils(this).updateMarker(this, marker);
     }
 }

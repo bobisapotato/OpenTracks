@@ -33,15 +33,14 @@ import android.view.KeyEvent;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
-import android.view.View.OnClickListener;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.widget.SearchView;
+import androidx.appcompat.widget.Toolbar;
 import androidx.core.app.ActivityCompat;
 import androidx.cursoradapter.widget.ResourceCursorAdapter;
 import androidx.loader.app.LoaderManager;
-import androidx.loader.app.LoaderManager.LoaderCallbacks;
 import androidx.loader.content.CursorLoader;
 import androidx.loader.content.Loader;
 
@@ -60,14 +59,13 @@ import de.dennisguse.opentracks.util.ListItemUtils;
 import de.dennisguse.opentracks.util.PreferencesUtils;
 import de.dennisguse.opentracks.util.StringUtils;
 import de.dennisguse.opentracks.util.TrackIconUtils;
-import de.dennisguse.opentracks.util.TrackUtils;
 
 /**
  * An activity displaying a list of tracks.
  *
  * @author Leif Hendrik Wilden
  */
-public class TrackListActivity extends AbstractListActivity implements ConfirmDeleteDialogFragment.ConfirmDeleteCaller {
+public class TrackListActivity extends AbstractListActivity implements ConfirmDeleteDialogFragment.ConfirmDeleteCaller, TrackController.Callback {
 
     private static final String TAG = TrackListActivity.class.getSimpleName();
 
@@ -80,26 +78,7 @@ public class TrackListActivity extends AbstractListActivity implements ConfirmDe
 
     private TrackListBinding viewBinding;
 
-    private final LoaderCallbacks<Cursor> loaderCallbacks = new LoaderCallbacks<Cursor>() {
-        @Override
-        public Loader<Cursor> onCreateLoader(int arg0, Bundle arg1) {
-            String[] PROJECTION = new String[]{TracksColumns._ID, TracksColumns.NAME,
-                    TracksColumns.DESCRIPTION, TracksColumns.CATEGORY, TracksColumns.STARTTIME,
-                    TracksColumns.TOTALDISTANCE, TracksColumns.TOTALTIME, TracksColumns.ICON, "markerCount"};
-
-            return new CursorLoader(TrackListActivity.this, TracksColumns.CONTENT_URI, PROJECTION, null, null, TrackUtils.TRACK_SORT_ORDER);
-        }
-
-        @Override
-        public void onLoadFinished(@NonNull Loader<Cursor> loader, Cursor cursor) {
-            resourceCursorAdapter.swapCursor(cursor);
-        }
-
-        @Override
-        public void onLoaderReset(@NonNull Loader<Cursor> loader) {
-            resourceCursorAdapter.swapCursor(null);
-        }
-    };
+    private final TrackLoaderCallBack loaderCallbacks = new TrackLoaderCallBack();
 
     // Preferences
     private boolean metricUnits = true;
@@ -117,8 +96,8 @@ public class TrackListActivity extends AbstractListActivity implements ConfirmDe
         }
 
         @Override
-        public boolean onClick(int itemId, int[] positions, long[] ids) {
-            return handleContextItem(itemId, ids);
+        public boolean onClick(int itemId, int[] positions, long[] trackIds) {
+            return handleContextItem(itemId, trackIds);
         }
     };
 
@@ -142,7 +121,7 @@ public class TrackListActivity extends AbstractListActivity implements ConfirmDe
             if (key != null) {
                 runOnUiThread(() -> {
                     TrackListActivity.this.invalidateOptionsMenu();
-                    LoaderManager.getInstance(TrackListActivity.this).restartLoader(0, null, loaderCallbacks);
+                    loaderCallbacks.restart();
                     boolean isRecording = PreferencesUtils.isRecording(recordingTrackId);
                     trackController.update(isRecording, recordingTrackPaused);
                 });
@@ -153,14 +132,6 @@ public class TrackListActivity extends AbstractListActivity implements ConfirmDe
     // Menu items
     private MenuItem searchMenuItem;
     private MenuItem startGpsMenuItem;
-
-    private final OnClickListener stopListener = new OnClickListener() {
-        @Override
-        public void onClick(View v) {
-            updateMenuItems(false, false);
-            trackRecordingServiceConnection.stopRecording(TrackListActivity.this, true);
-        }
-    };
 
     // Callback when the trackRecordingServiceConnection binding changes.
     private final Runnable bindChangedCallback = new Runnable() {
@@ -196,33 +167,13 @@ public class TrackListActivity extends AbstractListActivity implements ConfirmDe
         }
     };
 
-    private final OnClickListener recordListener = new OnClickListener() {
-        public void onClick(View v) {
-            if (!PreferencesUtils.isRecording(recordingTrackId)) {
-                // Not recording -> Recording
-                updateMenuItems(false, true);
-                Intent newIntent = IntentUtils.newIntent(TrackListActivity.this, TrackRecordingActivity.class);
-                startActivity(newIntent);
-            } else if (recordingTrackPaused) {
-                // Paused -> Resume
-                updateMenuItems(false, true);
-                trackRecordingServiceConnection.resumeTrack();
-                trackController.update(true, false);
-            } else {
-                // Recording -> Paused
-                updateMenuItems(false, true);
-                trackRecordingServiceConnection.pauseTrack();
-                trackController.update(true, true);
-            }
-        }
-    };
-
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         // Reset theme after splash
         setTheme(R.style.ThemeCustom);
 
         super.onCreate(savedInstanceState);
+        setDefaultKeyMode(DEFAULT_KEYS_SEARCH_LOCAL);
 
         gpsStatusValue = GpsStatusValue.GPS_NONE;
 
@@ -231,9 +182,8 @@ public class TrackListActivity extends AbstractListActivity implements ConfirmDe
         sharedPreferences = PreferencesUtils.getSharedPreferences(this);
 
         trackRecordingServiceConnection = new TrackRecordingServiceConnection(bindChangedCallback);
-        trackController = new TrackController(this, viewBinding.trackControllerContainer, trackRecordingServiceConnection, true, recordListener, stopListener);
+        trackController = new TrackController(this, viewBinding.trackControllerContainer, trackRecordingServiceConnection, true, this);
 
-        setDefaultKeyMode(DEFAULT_KEYS_SEARCH_LOCAL);
 
         // Show trackController when search dialog is dismissed
         SearchManager searchManager = (SearchManager) getSystemService(SEARCH_SERVICE);
@@ -287,12 +237,17 @@ public class TrackListActivity extends AbstractListActivity implements ConfirmDe
             }
         };
         viewBinding.trackList.setAdapter(resourceCursorAdapter);
-
         ActivityUtils.configureListViewContextualMenu(viewBinding.trackList, contextualActionModeCallback);
 
-        LoaderManager.getInstance(this).initLoader(0, null, loaderCallbacks);
+        loadData(getIntent());
 
         requestGPSPermissions();
+    }
+
+    @Override
+    protected void setupActionBarBack(Toolbar toolbar) {
+        setSupportActionBar(toolbar);
+        toolbar.setNavigationIcon(R.drawable.ic_logo_color_24dp);
     }
 
     @Override
@@ -305,6 +260,14 @@ public class TrackListActivity extends AbstractListActivity implements ConfirmDe
     }
 
     @Override
+    protected void onPause() {
+        super.onPause();
+
+        // Update UI
+        trackController.onPause();
+    }
+
+    @Override
     protected void onResume() {
         super.onResume();
 
@@ -312,14 +275,6 @@ public class TrackListActivity extends AbstractListActivity implements ConfirmDe
         this.invalidateOptionsMenu();
         LoaderManager.getInstance(this).restartLoader(0, null, loaderCallbacks);
         trackController.onResume(PreferencesUtils.isRecording(recordingTrackId), recordingTrackPaused);
-    }
-
-    @Override
-    protected void onPause() {
-        super.onPause();
-
-        // Update UI
-        trackController.onPause();
     }
 
     @Override
@@ -372,43 +327,45 @@ public class TrackListActivity extends AbstractListActivity implements ConfirmDe
 
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
-        Intent intent;
-        switch (item.getItemId()) {
-            case R.id.track_list_start_gps:
-                LocationManager locationManager = (LocationManager) this.getSystemService(Context.LOCATION_SERVICE);
-                if (locationManager != null && !locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
-                    intent = new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS);
-                    startActivity(intent);
+        if (item.getItemId() == R.id.track_list_start_gps) {
+            LocationManager locationManager = (LocationManager) this.getSystemService(Context.LOCATION_SERVICE);
+            if (locationManager != null && !locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
+                startActivity(new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS));
+            } else {
+                // Invoke trackRecordingService
+                if (!isGpsStarted()) {
+                    trackRecordingServiceConnection.startAndBind(this);
+                    bindChangedCallback.run();
                 } else {
-                    // Invoke trackRecordingService
-                    if (!isGpsStarted()) {
-                        trackRecordingServiceConnection.startAndBind(this);
-                        bindChangedCallback.run();
-                    } else {
-                        TrackRecordingServiceInterface trackRecordingService = trackRecordingServiceConnection.getServiceIfBound();
-                        if (trackRecordingService != null) {
-                            trackRecordingService.stopGps();
-                        }
-                        trackRecordingServiceConnection.unbindAndStop(this);
+                    TrackRecordingServiceInterface trackRecordingService = trackRecordingServiceConnection.getServiceIfBound();
+                    if (trackRecordingService != null) {
+                        trackRecordingService.stopGps();
                     }
-
-                    // Update menu after starting or stopping gps
-                    this.invalidateOptionsMenu();
+                    trackRecordingServiceConnection.unbindAndStop(this);
                 }
-                return true;
-            case R.id.track_list_aggregated_stats:
-                intent = IntentUtils.newIntent(this, AggregatedStatisticsActivity.class);
-                startActivity(intent);
-                return true;
-            case R.id.track_list_markers:
-                intent = IntentUtils.newIntent(this, MarkerListActivity.class);
-                startActivity(intent);
-                return true;
-            case R.id.track_list_settings:
-                intent = IntentUtils.newIntent(this, SettingsActivity.class);
-                startActivity(intent);
-                return true;
+
+                // Update menu after starting or stopping gps
+                this.invalidateOptionsMenu();
+            }
+
+            return true;
         }
+
+        if (item.getItemId() == R.id.track_list_aggregated_stats) {
+            startActivity(IntentUtils.newIntent(this, AggregatedStatisticsActivity.class));
+            return true;
+        }
+
+        if (item.getItemId() == R.id.track_list_markers) {
+            startActivity(IntentUtils.newIntent(this, MarkerListActivity.class));
+            return true;
+        }
+
+        if (item.getItemId() == R.id.track_list_settings) {
+            startActivity(IntentUtils.newIntent(this, SettingsActivity.class));
+            return true;
+        }
+
         return super.onOptionsItemSelected(item);
     }
 
@@ -418,6 +375,36 @@ public class TrackListActivity extends AbstractListActivity implements ConfirmDe
             return true;
         }
         return super.onKeyUp(keyCode, event);
+    }
+
+    @Override
+    public void onBackPressed() {
+        if (loaderCallbacks.getSearchQuery() != null) {
+            loaderCallbacks.setSearch(null);
+            return;
+        }
+        SearchView searchView = (SearchView) searchMenuItem.getActionView();
+        if (!searchView.isIconified()) {
+            searchView.setIconified(true);
+            return;
+        }
+        super.onBackPressed();
+    }
+
+    @Override
+    public void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        loadData(intent);
+    }
+
+    private void loadData(Intent intent) {
+        String searchQuery = null;
+        if (Intent.ACTION_SEARCH.equals(intent.getAction())) {
+            searchQuery = intent.getStringExtra(SearchManager.QUERY);
+        }
+
+        loaderCallbacks.setSearch(searchQuery);
     }
 
     @Override
@@ -433,7 +420,7 @@ public class TrackListActivity extends AbstractListActivity implements ConfirmDe
     }
 
     @Override
-    protected void onDeleted() {
+    protected void onTrackDeleted() {
         // Do nothing
     }
 
@@ -489,31 +476,116 @@ public class TrackListActivity extends AbstractListActivity implements ConfirmDe
             trackIds[i] = new Track.Id(longTrackIds[i]);
         }
 
-        Intent intent;
-        switch (itemId) {
-            case R.id.list_context_menu_show_on_map:
-                IntentDashboardUtils.startDashboard(this, false, trackIds);
-                return true;
-            case R.id.list_context_menu_share:
-                intent = IntentUtils.newShareFileIntent(this, trackIds);
-                intent = Intent.createChooser(intent, null);
-                startActivity(intent);
-                return true;
-            case R.id.list_context_menu_edit:
-                intent = IntentUtils.newIntent(this, TrackEditActivity.class)
-                        .putExtra(TrackEditActivity.EXTRA_TRACK_ID, trackIds[0]);
-                startActivity(intent);
-                return true;
-            case R.id.list_context_menu_delete:
-                deleteTracks(trackIds);
-                return true;
-            case R.id.list_context_menu_select_all:
-                int size = viewBinding.trackList.getCount();
-                for (int i = 0; i < size; i++) {
-                    viewBinding.trackList.setItemChecked(i, true);
-                }
-                return false;
+        if (itemId == R.id.list_context_menu_show_on_map) {
+            IntentDashboardUtils.startDashboard(this, false, trackIds);
+            return true;
         }
+
+        if (itemId == R.id.list_context_menu_share) {
+            Intent intent = IntentUtils.newShareFileIntent(this, trackIds);
+            intent = Intent.createChooser(intent, null);
+            startActivity(intent);
+            return true;
+        }
+
+
+        if (itemId == R.id.list_context_menu_edit) {
+            Intent intent = IntentUtils.newIntent(this, TrackEditActivity.class)
+                    .putExtra(TrackEditActivity.EXTRA_TRACK_ID, trackIds[0]);
+            startActivity(intent);
+            return true;
+        }
+
+        if (itemId == R.id.list_context_menu_delete) {
+            deleteTracks(trackIds);
+            return true;
+        }
+        if (itemId == R.id.list_context_menu_select_all) {
+            for (int i = 0; i < viewBinding.trackList.getCount(); i++) {
+                viewBinding.trackList.setItemChecked(i, true);
+            }
+            return false;
+        }
+
         return false;
+    }
+
+    private class TrackLoaderCallBack implements LoaderManager.LoaderCallbacks<Cursor> {
+
+        private String searchQuery = null;
+
+        public String getSearchQuery() {
+            return searchQuery;
+        }
+
+        public void setSearch(String searchQuery) {
+            this.searchQuery = searchQuery;
+            restart();
+            if (searchQuery != null) {
+                setTitle(searchQuery);
+            } else {
+                setTitle(R.string.app_name);
+            }
+        }
+
+        public void restart() {
+            LoaderManager.getInstance(TrackListActivity.this).restartLoader(0, null, loaderCallbacks);
+        }
+
+        @NonNull
+        @Override
+        public Loader<Cursor> onCreateLoader(int arg0, Bundle arg1) {
+            final String[] PROJECTION = new String[]{TracksColumns._ID, TracksColumns.NAME,
+                    TracksColumns.DESCRIPTION, TracksColumns.CATEGORY, TracksColumns.STARTTIME,
+                    TracksColumns.TOTALDISTANCE, TracksColumns.TOTALTIME, TracksColumns.ICON, TracksColumns.MARKER_COUNT};
+
+            final String sortOrder = TracksColumns.STARTTIME + " DESC";
+
+            if (searchQuery == null) {
+                return new CursorLoader(TrackListActivity.this, TracksColumns.CONTENT_URI, PROJECTION, null, null, sortOrder);
+            } else {
+                final String SEARCH_QUERY = TracksColumns.NAME + " LIKE ? OR " +
+                        TracksColumns.DESCRIPTION + " LIKE ? OR " +
+                        TracksColumns.CATEGORY + " LIKE ?";
+                final String[] selectionArgs = new String[]{"%" + searchQuery + "%", "%" + searchQuery + "%", "%" + searchQuery + "%"};
+                return new CursorLoader(TrackListActivity.this, TracksColumns.CONTENT_URI, PROJECTION, SEARCH_QUERY, selectionArgs, sortOrder);
+            }
+        }
+
+        @Override
+        public void onLoadFinished(@NonNull Loader<Cursor> loader, Cursor cursor) {
+            resourceCursorAdapter.swapCursor(cursor);
+        }
+
+        @Override
+        public void onLoaderReset(@NonNull Loader<Cursor> loader) {
+            resourceCursorAdapter.swapCursor(null);
+        }
+    }
+
+    @Override
+    public void recordStart() {
+        if (!PreferencesUtils.isRecording(recordingTrackId)) {
+            // Not recording -> Recording
+            updateMenuItems(false, true);
+            Intent newIntent = IntentUtils.newIntent(TrackListActivity.this, TrackRecordingActivity.class);
+            startActivity(newIntent);
+        } else if (recordingTrackPaused) {
+            // Paused -> Resume
+            updateMenuItems(false, true);
+            trackRecordingServiceConnection.resumeTrack();
+            trackController.update(true, false);
+        } else {
+            // Recording -> Paused
+            updateMenuItems(false, true);
+            trackRecordingServiceConnection.pauseTrack();
+            trackController.update(true, true);
+        }
+    }
+
+    @Override
+    public void recordStop() {
+        updateMenuItems(false, false);
+        trackRecordingServiceConnection.stopRecording(TrackListActivity.this, true);
     }
 }

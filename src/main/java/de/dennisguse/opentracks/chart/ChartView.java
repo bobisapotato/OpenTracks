@@ -30,9 +30,11 @@ import android.view.GestureDetector;
 import android.view.MotionEvent;
 import android.view.ScaleGestureDetector;
 import android.view.View;
+import android.view.ViewParent;
 import android.widget.Scroller;
 
 import androidx.annotation.NonNull;
+import androidx.core.content.ContextCompat;
 import androidx.core.view.GestureDetectorCompat;
 
 import java.text.NumberFormat;
@@ -57,9 +59,6 @@ import de.dennisguse.opentracks.util.UnitConversions;
  * @author Leif Hendrik Wilden
  */
 public class ChartView extends View {
-
-    static final float MEDIUM_TEXT_SIZE = 18f;
-    static final float SMALL_TEXT_SIZE = 12f;
 
     static final int Y_AXIS_INTERVALS = 5;
 
@@ -114,7 +113,7 @@ public class ChartView extends View {
     private int effectiveWidth = 0;
     private int effectiveHeight = 0;
 
-    private boolean chartByDistance;
+    private final boolean chartByDistance;
     private boolean metricUnits = true;
     private boolean reportSpeed = true;
     private boolean showPointer = false;
@@ -192,6 +191,9 @@ public class ChartView extends View {
     public ChartView(Context context, final boolean chartByDistance) {
         super(context);
         this.chartByDistance = chartByDistance;
+        int fontSizeSmall = ThemeUtils.getFontSizeSmallInPx(context);
+        int fontSizeMedium = ThemeUtils.getFontSizeMediumInPx(context);
+
         seriesList.add(new ChartValueSeries(context,
                 Integer.MIN_VALUE,
                 Integer.MAX_VALUE,
@@ -199,7 +201,9 @@ public class ChartView extends View {
                 R.string.description_elevation_metric,
                 R.string.description_elevation_imperial,
                 R.color.chart_elevation_fill,
-                R.color.chart_elevation_border) {
+                R.color.chart_elevation_border,
+                fontSizeSmall,
+                fontSizeMedium) {
             @Override
             protected double extractDataFromChartPoint(@NonNull ChartPoint chartPoint) {
                 return chartPoint.getElevation();
@@ -218,7 +222,9 @@ public class ChartView extends View {
                 R.string.description_speed_metric,
                 R.string.description_speed_imperial,
                 R.color.chart_speed_fill,
-                R.color.chart_speed_border) {
+                R.color.chart_speed_border,
+                fontSizeSmall,
+                fontSizeMedium) {
             @Override
             protected double extractDataFromChartPoint(@NonNull ChartPoint chartPoint) {
                 return chartPoint.getSpeed();
@@ -238,7 +244,9 @@ public class ChartView extends View {
                 R.string.description_pace_metric,
                 R.string.description_pace_imperial,
                 R.color.chart_pace_fill,
-                R.color.chart_pace_border) {
+                R.color.chart_pace_border,
+                fontSizeSmall,
+                fontSizeMedium) {
             @Override
             protected double extractDataFromChartPoint(@NonNull ChartPoint chartPoint) {
                 return chartPoint.getPace();
@@ -258,7 +266,9 @@ public class ChartView extends View {
                 R.string.description_sensor_heart_rate,
                 R.string.description_sensor_heart_rate,
                 R.color.chart_heart_rate_fill,
-                R.color.chart_heart_rate_border) {
+                R.color.chart_heart_rate_border,
+                fontSizeSmall,
+                fontSizeMedium) {
             @Override
             protected double extractDataFromChartPoint(@NonNull ChartPoint chartPoint) {
                 return chartPoint.getHeartRate();
@@ -277,7 +287,9 @@ public class ChartView extends View {
                 R.string.description_sensor_cadence,
                 R.string.description_sensor_cadence,
                 R.color.chart_cadence_fill,
-                R.color.chart_cadence_border) {
+                R.color.chart_cadence_border,
+                fontSizeSmall,
+                fontSizeMedium) {
             @Override
             protected double extractDataFromChartPoint(@NonNull ChartPoint chartPoint) {
                 return chartPoint.getCadence();
@@ -295,7 +307,9 @@ public class ChartView extends View {
                 R.string.description_sensor_power,
                 R.string.description_sensor_power,
                 R.color.chart_power_fill,
-                R.color.chart_power_border) {
+                R.color.chart_power_border,
+                fontSizeSmall,
+                fontSizeMedium) {
             @Override
             protected double extractDataFromChartPoint(@NonNull ChartPoint chartPoint) {
                 return chartPoint.getPower();
@@ -309,13 +323,11 @@ public class ChartView extends View {
 
         backgroundColor = ThemeUtils.getBackgroundColor(context);
 
-        float scale = context.getResources().getDisplayMetrics().density;
-
         axisPaint = new Paint();
         axisPaint.setStyle(Style.FILL_AND_STROKE);
         axisPaint.setColor(ThemeUtils.getTextColorPrimary(context));
         axisPaint.setAntiAlias(true);
-        axisPaint.setTextSize(SMALL_TEXT_SIZE * scale);
+        axisPaint.setTextSize(fontSizeSmall);
 
         xAxisMarkerPaint = new Paint(axisPaint);
         xAxisMarkerPaint.setTextAlign(Align.CENTER);
@@ -330,7 +342,7 @@ public class ChartView extends View {
         markerPaint.setStyle(Style.STROKE);
         markerPaint.setAntiAlias(false);
 
-        pointer = context.getResources().getDrawable(R.drawable.ic_logo_color_24dp);
+        pointer = ContextCompat.getDrawable(context, R.drawable.ic_logo_color_24dp);
         pointer.setBounds(0, 0, pointer.getIntrinsicWidth(), pointer.getIntrinsicHeight());
 
         markerPin = MarkerUtils.getDefaultPhoto(context);
@@ -490,19 +502,33 @@ public class ChartView extends View {
     }
 
     /**
+     * Handle parent's view disallow touch event.
+     *
+     * @param disallow Does disallow parent touch event?
+     */
+    private void requestDisallowInterceptTouchEventInParent(boolean disallow) {
+        ViewParent parent = getParent();
+        if (parent != null) {
+            parent.requestDisallowInterceptTouchEvent(disallow);
+        }
+    }
+
+    /**
      * Scrolls the view horizontally by a given amount.
      *
      * @param deltaX the number of pixels to scroll
      */
     private void scrollBy(int deltaX) {
         int scrollX = getScrollX() + deltaX;
-        if (scrollX < 0) {
+        if (scrollX <= 0) {
             scrollX = 0;
         }
+
         int maxWidth = effectiveWidth * (zoomLevel - 1);
-        if (scrollX > maxWidth) {
+        if (scrollX >= maxWidth) {
             scrollX = maxWidth;
         }
+
         scrollTo(scrollX, 0);
     }
 
@@ -527,6 +553,10 @@ public class ChartView extends View {
     public boolean onTouchEvent(MotionEvent event) {
         boolean isZoom = detectorZoom.onTouchEvent(event);
         boolean isScrollTab = detectorScrollFlingTab.onTouchEvent(event);
+
+        // ChartView handles zoom gestures (more than one pointer) and all gestures when zoomed itself
+        requestDisallowInterceptTouchEventInParent(event.getPointerCount() != 1 || zoomLevel != MIN_ZOOM_LEVEL);
+
         return isZoom || isScrollTab;
     }
 
@@ -881,6 +911,7 @@ public class ChartView extends View {
 
     /**
      * Finds the index of the first data point containing data for a series.
+     *
      * @return -1 if no data point contains data for the series.
      */
     private int getFirstPopulatedChartDataIndex(ChartValueSeries chartValueSeries) {

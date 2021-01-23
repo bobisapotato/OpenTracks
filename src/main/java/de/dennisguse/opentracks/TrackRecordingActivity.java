@@ -9,13 +9,14 @@ import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
-import android.view.View.OnClickListener;
 import android.view.WindowManager;
 
 import androidx.annotation.NonNull;
 import androidx.fragment.app.Fragment;
-import androidx.fragment.app.FragmentManager;
-import androidx.fragment.app.FragmentPagerAdapter;
+import androidx.fragment.app.FragmentActivity;
+import androidx.viewpager2.adapter.FragmentStateAdapter;
+
+import com.google.android.material.tabs.TabLayoutMediator;
 
 import de.dennisguse.opentracks.content.TrackDataHub;
 import de.dennisguse.opentracks.content.data.Track;
@@ -42,7 +43,7 @@ import de.dennisguse.opentracks.util.TrackUtils;
  */
 //NOTE: This activity does NOT react to preference changes of R.string.recording_track_id_key.
 //This mode of communication should be removed anyhow.
-public class TrackRecordingActivity extends AbstractActivity implements ChooseActivityTypeDialogFragment.ChooseActivityTypeCaller, TrackActivityDataHubInterface {
+public class TrackRecordingActivity extends AbstractActivity implements ChooseActivityTypeDialogFragment.ChooseActivityTypeCaller, TrackActivityDataHubInterface, TrackController.Callback {
 
     public static final String EXTRA_TRACK_ID = "track_id";
 
@@ -126,36 +127,6 @@ public class TrackRecordingActivity extends AbstractActivity implements ChooseAc
     private MenuItem insertMarkerMenuItem;
     private MenuItem markerListMenuItem;
 
-    private final OnClickListener recordListener = new OnClickListener() {
-        @Override
-        public void onClick(View v) {
-            if (recordingTrackPaused) {
-                // Paused -> Resume
-                updateMenuItems(false);
-                trackRecordingServiceConnection.resumeTrack();
-                trackController.update(true, false);
-            } else {
-                // Recording -> Paused
-                updateMenuItems(true);
-                trackRecordingServiceConnection.pauseTrack();
-                trackController.update(true, true);
-            }
-        }
-    };
-
-    private final OnClickListener stopListener = new OnClickListener() {
-        @Override
-        public void onClick(View v) {
-            trackRecordingServiceConnection.stopRecording(TrackRecordingActivity.this, true);
-            Intent newIntent = IntentUtils.newIntent(TrackRecordingActivity.this, TrackRecordedActivity.class)
-                    .putExtra(TrackRecordedActivity.EXTRA_TRACK_ID, trackId);
-            startActivity(newIntent);
-            overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
-            updateMenuItems(true);
-            finish();
-        }
-    };
-
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -179,13 +150,15 @@ public class TrackRecordingActivity extends AbstractActivity implements ChooseAc
         trackRecordingServiceConnection = new TrackRecordingServiceConnection(bindChangedCallback);
         trackDataHub = new TrackDataHub(this);
 
-        viewBinding.trackDetailActivityViewPager.setAdapter(new CustomFragmentPagerAdapter(getSupportFragmentManager(), FragmentPagerAdapter.BEHAVIOR_RESUME_ONLY_CURRENT_FRAGMENT));
-        viewBinding.trackDetailActivityTablayout.setupWithViewPager(viewBinding.trackDetailActivityViewPager);
+        CustomFragmentPagerAdapter pagerAdapter = new CustomFragmentPagerAdapter(this);
+        viewBinding.trackDetailActivityViewPager.setAdapter(pagerAdapter);
+        new TabLayoutMediator(viewBinding.trackDetailActivityTablayout, viewBinding.trackDetailActivityViewPager,
+                (tab, position) -> tab.setText(pagerAdapter.getPageTitle(position))).attach();
         if (savedInstanceState != null) {
             viewBinding.trackDetailActivityViewPager.setCurrentItem(savedInstanceState.getInt(CURRENT_TAB_TAG_KEY));
         }
 
-        trackController = new TrackController(this, viewBinding.trackControllerContainer, trackRecordingServiceConnection, false, recordListener, stopListener);
+        trackController = new TrackController(this, viewBinding.trackControllerContainer, trackRecordingServiceConnection, false, this);
     }
 
     @Override
@@ -305,34 +278,41 @@ public class TrackRecordingActivity extends AbstractActivity implements ChooseAc
 
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
-        Intent intent;
-        switch (item.getItemId()) {
-            case R.id.track_detail_insert_marker:
-                intent = IntentUtils
-                        .newIntent(this, MarkerEditActivity.class)
-                        .putExtra(MarkerEditActivity.EXTRA_TRACK_ID, trackId);
-                startActivity(intent);
-                return true;
-            case R.id.track_detail_menu_show_on_map:
-                IntentDashboardUtils.startDashboard(this, true, trackId);
-                return true;
-            case R.id.track_detail_markers:
-                intent = IntentUtils.newIntent(this, MarkerListActivity.class)
-                        .putExtra(MarkerListActivity.EXTRA_TRACK_ID, trackId);
-                startActivity(intent);
-                return true;
-            case R.id.track_detail_edit:
-                intent = IntentUtils.newIntent(this, TrackEditActivity.class)
-                        .putExtra(TrackEditActivity.EXTRA_TRACK_ID, trackId);
-                startActivity(intent);
-                return true;
-            case R.id.track_detail_settings:
-                intent = IntentUtils.newIntent(this, SettingsActivity.class);
-                startActivity(intent);
-                return true;
-            default:
-                return super.onOptionsItemSelected(item);
+        if (item.getItemId() == R.id.track_detail_insert_marker) {
+            Intent intent = IntentUtils
+                    .newIntent(this, MarkerEditActivity.class)
+                    .putExtra(MarkerEditActivity.EXTRA_TRACK_ID, trackId);
+            startActivity(intent);
+            return true;
         }
+
+        if (item.getItemId() == R.id.track_detail_menu_show_on_map) {
+            IntentDashboardUtils.startDashboard(this, true, trackId);
+            return true;
+        }
+
+        if (item.getItemId() == R.id.track_detail_markers) {
+            Intent intent = IntentUtils.newIntent(this, MarkerListActivity.class)
+                    .putExtra(MarkerListActivity.EXTRA_TRACK_ID, trackId);
+            startActivity(intent);
+            return true;
+
+        }
+
+        if (item.getItemId() == R.id.track_detail_edit) {
+            Intent intent = IntentUtils.newIntent(this, TrackEditActivity.class)
+                    .putExtra(TrackEditActivity.EXTRA_TRACK_ID, trackId);
+            startActivity(intent);
+            return true;
+        }
+
+        if (item.getItemId() == R.id.track_detail_settings) {
+            Intent intent = IntentUtils.newIntent(this, SettingsActivity.class);
+            startActivity(intent);
+            return true;
+        }
+
+        return super.onOptionsItemSelected(item);
     }
 
     /**
@@ -363,20 +343,41 @@ public class TrackRecordingActivity extends AbstractActivity implements ChooseAc
         TrackUtils.updateTrack(this, track, null, category, null, contentProviderUtils);
     }
 
-    private class CustomFragmentPagerAdapter extends FragmentPagerAdapter {
-
-        public CustomFragmentPagerAdapter(@NonNull FragmentManager fm, int behavior) {
-            super(fm, behavior);
+    @Override
+    public void recordStart() {
+        if (recordingTrackPaused) {
+            // Paused -> Resume
+            updateMenuItems(false);
+            trackRecordingServiceConnection.resumeTrack();
+            trackController.update(true, false);
+        } else {
+            // Recording -> Paused
+            updateMenuItems(true);
+            trackRecordingServiceConnection.pauseTrack();
+            trackController.update(true, true);
         }
+    }
 
-        @Override
-        public int getCount() {
-            return 4;
+    @Override
+    public void recordStop() {
+        trackRecordingServiceConnection.stopRecording(TrackRecordingActivity.this, true);
+        Intent newIntent = IntentUtils.newIntent(TrackRecordingActivity.this, TrackRecordedActivity.class)
+                .putExtra(TrackRecordedActivity.EXTRA_TRACK_ID, trackId);
+        startActivity(newIntent);
+        overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
+        updateMenuItems(true);
+        finish();
+    }
+
+    private class CustomFragmentPagerAdapter extends FragmentStateAdapter {
+
+        public CustomFragmentPagerAdapter(@NonNull FragmentActivity fa) {
+            super(fa);
         }
 
         @NonNull
         @Override
-        public Fragment getItem(int position) {
+        public Fragment createFragment(int position) {
             switch (position) {
                 case 0:
                     return StatisticsRecordingFragment.newInstance();
@@ -392,6 +393,10 @@ public class TrackRecordingActivity extends AbstractActivity implements ChooseAc
         }
 
         @Override
+        public int getItemCount() {
+            return 4;
+        }
+
         public CharSequence getPageTitle(int position) {
             switch (position) {
                 case 0:
