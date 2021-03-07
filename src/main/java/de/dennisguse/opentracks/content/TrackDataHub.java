@@ -40,13 +40,12 @@ import de.dennisguse.opentracks.content.data.TrackPointsColumns;
 import de.dennisguse.opentracks.content.data.TracksColumns;
 import de.dennisguse.opentracks.content.provider.ContentProviderUtils;
 import de.dennisguse.opentracks.content.provider.TrackPointIterator;
-import de.dennisguse.opentracks.util.LocationUtils;
 import de.dennisguse.opentracks.util.PreferencesUtils;
 
 /**
  * Track data hub.
  * Receives data from {@link de.dennisguse.opentracks.content.provider.CustomContentProvider} and distributes it to {@link TrackDataListener} after some processing.
- *
+ * <p>
  * {@link TrackPoint}s are filtered/downsampled with a dynamic sampling frequency.
  *
  * @author Rodrigo Damazio
@@ -143,7 +142,7 @@ public class TrackDataHub implements SharedPreferences.OnSharedPreferenceChangeL
 
         PreferencesUtils.register(context, this);
         onSharedPreferenceChanged(null, null);
-        runInHandlerThread(() -> {
+        handler.post(() -> {
             if (started) {
                 loadDataForAll();
             }
@@ -174,7 +173,7 @@ public class TrackDataHub implements SharedPreferences.OnSharedPreferenceChangeL
     }
 
     public void loadTrack(final @NonNull Track.Id trackId) {
-        runInHandlerThread(() -> {
+        handler.post(() -> {
             if (trackId.equals(selectedTrackId)) {
                 Log.i(TAG, "Not reloading track " + trackId.getId());
                 return;
@@ -190,7 +189,7 @@ public class TrackDataHub implements SharedPreferences.OnSharedPreferenceChangeL
      * @param trackDataListener the track data listener
      */
     public void registerTrackDataListener(final TrackDataListener trackDataListener, final boolean tracksTable, final boolean markersTable, final boolean trackPointsTable_SampleIn, final boolean trackPointsTable_SampleOut) {
-        runInHandlerThread(() -> {
+        handler.post(() -> {
             trackDataManager.registerTrackDataListener(trackDataListener, tracksTable, markersTable, trackPointsTable_SampleIn, trackPointsTable_SampleOut);
             if (started) {
                 loadDataForListener(trackDataListener);
@@ -204,7 +203,7 @@ public class TrackDataHub implements SharedPreferences.OnSharedPreferenceChangeL
      * @param trackDataListener the track data listener
      */
     public void unregisterTrackDataListener(final TrackDataListener trackDataListener) {
-        runInHandlerThread(() -> trackDataManager.unregisterTrackDataListener(trackDataListener));
+        handler.post(() -> trackDataManager.unregisterTrackDataListener(trackDataListener));
     }
 
     /**
@@ -223,7 +222,7 @@ public class TrackDataHub implements SharedPreferences.OnSharedPreferenceChangeL
 
     @Override
     public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, final String key) {
-        runInHandlerThread(() -> {
+        handler.post(() -> {
             if (PreferencesUtils.isKey(context, R.string.recording_track_id_key, key)) {
                 recordingTrackId = PreferencesUtils.getRecordingTrackId(context);
             }
@@ -314,9 +313,6 @@ public class TrackDataHub implements SharedPreferences.OnSharedPreferenceChangeL
             if (cursor != null && cursor.moveToFirst()) {
                 do {
                     Marker marker = contentProviderUtils.createMarker(cursor);
-                    if (!LocationUtils.isValidLocation(marker.getLocation())) {
-                        continue;
-                    }
                     for (TrackDataListener trackDataListener : trackDataListeners) {
                         trackDataListener.onNewMarker(marker);
                     }
@@ -362,18 +358,18 @@ public class TrackDataHub implements SharedPreferences.OnSharedPreferenceChangeL
 
         TrackPoint.Id lastTrackPointId = contentProviderUtils.getLastTrackPointId(selectedTrackId);
         int samplingFrequency = -1;
-        boolean includeNextPoint = false;
 
 
-        TrackPoint.Id next;
+        TrackPoint.Id next = null;
         if (localLastSeenTrackPointIdId != null) {
             next = new TrackPoint.Id(localLastSeenTrackPointIdId.getId() + 1); //TODO startTrackPointId + 1 is an assumption assumption; should be derived from the DB.
         }
 
-        try (TrackPointIterator trackPointIterator = contentProviderUtils.getTrackPointLocationIterator(selectedTrackId, null)) {
+        TrackPoint trackPoint = null;
+        try (TrackPointIterator trackPointIterator = contentProviderUtils.getTrackPointLocationIterator(selectedTrackId, next)) {
 
             while (trackPointIterator.hasNext()) {
-                TrackPoint trackPoint = trackPointIterator.next();
+                trackPoint = trackPointIterator.next();
                 TrackPoint.Id trackPointId = trackPoint.getId();
 
                 // Stop if past the last wanted point
@@ -390,25 +386,24 @@ public class TrackDataHub implements SharedPreferences.OnSharedPreferenceChangeL
                     samplingFrequency = 1 + (int) (numTotalPoints / targetNumPoints);
                 }
 
-                if (!LocationUtils.isValidLocation(trackPoint.getLocation())) { //This can be split markers (not anymore supported feature)
-                    includeNextPoint = true;
+
+                // Also include the last point if the selected track is not recording.
+                if ((localNumLoadedTrackPoints % samplingFrequency == 0) || (trackPointId == lastTrackPointId && !isSelectedTrackRecording())) {
+                    for (TrackDataListener trackDataListener : sampledInListeners) {
+                        trackDataListener.onSampledInTrackPoint(trackPoint);
+                    }
                 } else {
-                    // Also include the last point if the selected track is not recording.
-                    if (includeNextPoint || (localNumLoadedTrackPoints % samplingFrequency == 0) || (trackPointId == lastTrackPointId && !isSelectedTrackRecording())) {
-                        includeNextPoint = false;
-                        for (TrackDataListener trackDataListener : sampledInListeners) {
-                            trackDataListener.onSampledInTrackPoint(trackPoint);
-                        }
-                    } else {
-                        for (TrackDataListener trackDataListener : sampledOutListeners) {
-                            trackDataListener.onSampledOutTrackPoint(trackPoint);
-                        }
+                    for (TrackDataListener trackDataListener : sampledOutListeners) {
+                        trackDataListener.onSampledOutTrackPoint(trackPoint);
                     }
                 }
 
                 localNumLoadedTrackPoints++;
-                localLastSeenTrackPointIdId = trackPointId;
             }
+        }
+
+        if (trackPoint != null) {
+            localLastSeenTrackPointIdId = trackPoint.getId();
         }
 
         if (updateSamplingState) {
@@ -418,7 +413,7 @@ public class TrackDataHub implements SharedPreferences.OnSharedPreferenceChangeL
         }
 
         for (TrackDataListener listener : sampledInListeners) {
-            listener.onNewTrackPointsDone();
+            listener.onNewTrackPointsDone(trackPoint);
         }
     }
 
@@ -429,21 +424,5 @@ public class TrackDataHub implements SharedPreferences.OnSharedPreferenceChangeL
         numLoadedPoints = 0;
         firstSeenTrackPointId = null;
         lastSeenTrackPointId = null;
-    }
-
-    /**
-     * Run in the handler thread.
-     *
-     * @param runnable the runnable
-     */
-    @Deprecated //TODO: Why actually catch this problem: I guess it would be better to fail hard.
-    @VisibleForTesting
-    private void runInHandlerThread(Runnable runnable) {
-        if (handler == null) {
-            // Use a Throwable to ensure the stack trace is logged.
-            Log.d(TAG, "handler is null.", new Throwable());
-            return;
-        }
-        handler.post(runnable);
     }
 }

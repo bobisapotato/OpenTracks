@@ -29,6 +29,10 @@ import de.dennisguse.opentracks.content.provider.ContentProviderUtils;
 /**
  * Imports a GPX file.
  * Uses https://www8.garmin.com/xmlschemas/TrackPointExtensionv2.xsd
+ * <p>
+ * {@link de.dennisguse.opentracks.io.file.exporter.GPXTrackExporter} does not export information if a segment was started automatic or manually.
+ * Therefore, all segments starts are marked as SEGMENT_START_AUTOMATIC.
+ * Thus, the {@link de.dennisguse.opentracks.stats.TrackStatistics} cannot be restored correctly.
  *
  * @author Jimmy Shih
  */
@@ -100,6 +104,9 @@ public class GpxFileTrackImporter extends AbstractFileTrackImporter {
                 break;
             case TAG_TRACK:
                 onTrackEnd();
+                break;
+            case TAG_TRACK_SEGMENT:
+                onTrackSegmentEnd();
                 break;
             case TAG_TRACK_POINT:
                 onTrackPointEnd();
@@ -193,13 +200,11 @@ public class GpxFileTrackImporter extends AbstractFileTrackImporter {
         loss = null;
     }
 
-    /**
-     * On track point end.
-     */
     private void onTrackPointEnd() throws SAXException {
+        boolean isFirstTrackPointInSegment = isFirstTrackPointInSegment();
         TrackPoint trackPoint = getTrackPoint();
-        if (trackPoint == null) {
-            return;
+        if (isFirstTrackPointInSegment) {
+            trackPoint.setType(TrackPoint.Type.SEGMENT_START_AUTOMATIC);
         }
         insertTrackPoint(trackPoint);
     }

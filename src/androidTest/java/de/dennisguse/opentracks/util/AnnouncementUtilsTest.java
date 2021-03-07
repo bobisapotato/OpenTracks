@@ -8,6 +8,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
+import java.time.Duration;
 import java.util.List;
 
 import de.dennisguse.opentracks.R;
@@ -25,13 +26,15 @@ public class AnnouncementUtilsTest {
     private final Context context = ApplicationProvider.getApplicationContext();
 
     @Test
-    public void getAnnouncement() {
+    public void getAnnouncement_metric() {
+        PreferencesUtils.setString(context, R.string.stats_units_key, context.getString(R.string.stats_units_metric));
+
         TrackStatistics stats = new TrackStatistics();
         stats.setTotalDistance(20000);
-        stats.setTotalTime(600000);
-        stats.setMovingTime(300000);
+        stats.setTotalTime(Duration.ofMillis(600000));
+        stats.setMovingTime(Duration.ofMillis(300000));
         stats.setMaxSpeed(100);
-        stats.setTotalElevationGain(6000);
+        stats.setTotalElevationGain(6000f);
 
         // when
         String announcement = AnnouncementUtils.getAnnouncement(context, stats, "airplane", null);
@@ -41,42 +44,26 @@ public class AnnouncementUtilsTest {
     }
 
     @Test
-    public void getAnnouncement_withInterval() {
+    public void getAnnouncement_withInterval_metric() {
+        PreferencesUtils.setString(context, R.string.stats_units_key, context.getString(R.string.stats_units_metric));
+
         TrackStatistics stats = new TrackStatistics();
         stats.setTotalDistance(20000);
-        stats.setTotalTime(600000);
-        stats.setMovingTime(300000);
+        stats.setTotalTime(Duration.ofMillis(600000));
+        stats.setMovingTime(Duration.ofMillis(300000));
         stats.setMaxSpeed(100);
-        stats.setTotalElevationGain(6000);
+        stats.setTotalElevationGain(6000f);
 
         List<TrackPoint> trackPoints = TestDataUtil.createTrack(new Track.Id(System.currentTimeMillis()), 10).second;
         IntervalStatistics intervalStatistics = new IntervalStatistics(trackPoints, 1000);
         IntervalStatistics.Interval lastInterval = intervalStatistics.getIntervalList().get(intervalStatistics.getIntervalList().size() - 1);
 
-        int speedId = R.plurals.voiceSpeedKilometersPerHour;
-        double kmPerHour = lastInterval.getSpeed_ms() * UnitConversions.MPS_TO_KMH;
-
-        String firstPartMsg = "OpenTracks total distance 20.00 kilometers in 5 minutes 0 seconds at 240.0 kilometers per hour";
-        String rateMsg = " Lap speed of " + context.getResources().getQuantityString(speedId, getQuantityCount(kmPerHour), kmPerHour);
-        String msg = firstPartMsg + rateMsg;
+        String expected = "OpenTracks total distance 20.00 kilometers in 5 minutes 0 seconds at 240.0 kilometers per hour Lap speed of 51.2 kilometers per hour";
 
         // when
         String announcement = AnnouncementUtils.getAnnouncement(context, stats, "airplane", lastInterval);
 
         // then
-        assertEquals(msg, announcement);
-    }
-
-    private int getQuantityCount(double d) {
-        if (d == 0) {
-            return 0;
-        } else if (d == 1) {
-            return 1;
-        } else if (d == 2) {
-            return 2;
-        } else {
-            int count = (int) d;
-            return Math.max(count, 3);
-        }
+        assertEquals(expected, announcement);
     }
 }

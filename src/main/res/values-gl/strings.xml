@@ -35,6 +35,7 @@ limitations under the License.
     <string name="help_track_map_content"> Usa a pequena icona do mapa.
 \n
 \n a) (actualizacións ao vivo) Instala <a href="https://github.com/OpenTracksApp/OSMDashboard">OSMDashboard</a>. Proporciona mapas con e sen conexión desde <a href="https://www.openstreetmap.org">OpenStreetMap</a>.
+\n
 \n En realidade, OSMDashboard é unha aplicación independiente que só pode acceder (temporalmente) aos datos das rutas que se van a mostrar.
 \n
 \n b) A través dunha app \"normal\" como <a href="http://osmand.net/">OsmAnd</a> ou <a href="https://maps.me/">MAPS.ME</a>. Estas apps deben soportar o formato de ficheiros KMZ (só localización e marcas de tempo). De feito, unha app precisa soportar <i>ACTION_VIEW</i> con MIME <i>application/vnd.google-earth.kmz</i>. </string>
@@ -291,7 +292,6 @@ Se te detés ou estás en interiores, non se gardarán datos do sensor (mais ser
     <string name="menu_voice_frequency">Frecuencia da voz</string>
     <string name="menu_resume_track">Retomar gravación</string>
     <!-- OpenTracks -->
-    <string name="app_name">OpenTracks</string>
     <string name="recording_service">Servizo de gravación</string>
     <!-- Permission -->
     <string name="permission_gps_failed">OpenTracks precisa permiso para usar o GPS.</string>
@@ -356,7 +356,7 @@ Se te detés ou estás en interiores, non se gardarán datos do sensor (mais ser
     <string name="settings_sensor_bluetooth_sensor">Sensor de Bluetooth</string>
     <string name="settings_sensor_connecting">Conectado a %1$s</string>
     <string name="settings_sensor_disconnected">Desconectado de %1$s</string>
-    <string name="settings_sensor_wheel_circumference">Tamaño da roda (mm)</string>
+    <string name="settings_sensor_wheel_circumference">Circunferencia da roda (mm)</string>
     <!-- Settings Stats -->
     <string name="settings_stats_coordinate">Latitude/lonxitude</string>
     <string name="settings_stats_rate_title">Indicador preferido</string>
@@ -593,4 +593,27 @@ Se te detés ou estás en interiores, non se gardarán datos do sensor (mais ser
     <string name="toast_message_instant_track_was_exported">Última ruta exportada</string>
     <string name="instant_export_enabled_summary">Rematou a exportación da ruta á almacenaxe tras a gravación</string>
     <string name="import_thread_interrupted">Fío interrumpido</string>
+    <string name="export_progress_summary_new_msg">Exportadas as novas rutas</string>
+    <string name="import_no_kml_file_found">Non se atopou ficheiro doc.kml en KMZ</string>
+    <string name="stats_loss">Perda</string>
+    <string name="value_float_kilometer_hour">%1$.2f km/h</string>
+    <string name="value_float_mile_hour">%1$.2f mph</string>
+    <string name="description_elevation_loss">Perda de altitude: %1$d m (%2$d ft)</string>
+    <string name="export_error_post_workout">Fallou a exportación, comproba o directorio de exportación.</string>
+    <string name="value_pace_mile">%1$d:%2$02d min/mi</string>
+    <string name="value_pace_kilometer">%1$d:%2$02d min/km</string>
+    <string name="settings_prevent_reimport_tracks_title">Previr a reimportación de rutas</string>
+    <string name="export_progress_summary_overwrite_msg">Rutas sobrescritas</string>
+    <string name="export_progress_summary_skip_msg">Rutas omitidas</string>
+    <string name="export_progress_summary_errors_msg">Erros</string>
+    <string name="generic_open_track">Open Track</string>
+    <string name="import_prevent_reimport">Estableceches previr a reimportación da ruta</string>
+    <string name="import_progress_summary_ok_msg">Ficheiros importados</string>
+    <string name="import_progress_summary_exists_msg">Xa existe</string>
+    <string name="import_progress_summary_errors_msg">Erros</string>
+    <string name="sensor_state_cadence_avg">Cadencia media</string>
+    <string name="sensor_state_cadence_max">Cadencia máx.</string>
+    <string name="sensor_state_heart_rate_avg">Pulso medio</string>
+    <string name="sensor_state_heart_rate_max">Pulso máximo</string>
+    <string name="sensor_state_power_avg">Potencia media</string>
 </resources>

@@ -27,15 +27,23 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.core.content.ContextCompat;
 import androidx.fragment.app.Fragment;
+import androidx.recyclerview.widget.GridLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
+
+import java.util.ArrayList;
+import java.util.List;
 
 import de.dennisguse.opentracks.R;
+import de.dennisguse.opentracks.adapters.SensorsAdapter;
 import de.dennisguse.opentracks.content.data.Track;
 import de.dennisguse.opentracks.content.provider.ContentProviderUtils;
 import de.dennisguse.opentracks.databinding.StatisticsRecordedBinding;
+import de.dennisguse.opentracks.stats.SensorStatistics;
 import de.dennisguse.opentracks.stats.TrackStatistics;
 import de.dennisguse.opentracks.util.PreferencesUtils;
 import de.dennisguse.opentracks.util.StringUtils;
 import de.dennisguse.opentracks.util.TrackIconUtils;
+import de.dennisguse.opentracks.viewmodels.SensorDataModel;
 
 /**
  * A fragment to display track statistics to the user for a recorded {@link Track}.
@@ -43,35 +51,9 @@ import de.dennisguse.opentracks.util.TrackIconUtils;
  * @author Sandor Dornbush
  * @author Rodrigo Damazio
  */
-//TODO During updateUI(): do not call PreferenceUtils (it is slow) rather use sharedPreferenceChangeListener.
 public class StatisticsRecordedFragment extends Fragment {
 
     private static final String TRACK_ID_KEY = "trackId";
-
-    private TrackStatistics trackStatistics;
-    private String category = "";
-    private Track.Id trackId;
-    private ContentProviderUtils contentProviderUtils;
-
-    private StatisticsRecordedBinding viewBinding;
-
-    private final SharedPreferences.OnSharedPreferenceChangeListener sharedPreferenceChangeListener = (preferences, key) -> {
-        if (PreferencesUtils.isKey(getContext(), R.string.stats_units_key, key) || PreferencesUtils.isKey(getContext(), R.string.stats_rate_key, key)) {
-            if (isResumed()) {
-                getActivity().runOnUiThread(() -> {
-                    if (isResumed()) {
-                        updateUI();
-                    }
-                });
-            }
-        }
-    };
-
-    @Override
-    public View onCreateView(@NonNull LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
-        viewBinding = StatisticsRecordedBinding.inflate(inflater, container, false);
-        return viewBinding.getRoot();
-    }
 
     public static StatisticsRecordedFragment newInstance(Track.Id trackId) {
         Bundle bundle = new Bundle();
@@ -82,18 +64,71 @@ public class StatisticsRecordedFragment extends Fragment {
         return fragment;
     }
 
+
+    private TrackStatistics trackStatistics;
+    private SensorStatistics sensorStatistics;
+    private SensorsAdapter sensorsAdapter;
+    private String category = "";
+    private Track.Id trackId;
+    private ContentProviderUtils contentProviderUtils;
+
+    private StatisticsRecordedBinding viewBinding;
+
+    private SharedPreferences sharedPreferences;
+    private boolean preferenceMetricUnits;
+    private boolean preferenceReportSpeed;
+
+    private final SharedPreferences.OnSharedPreferenceChangeListener sharedPreferenceChangeListener = (sharedPreferences, key) -> {
+        boolean updateUInecessary = false;
+
+        if (PreferencesUtils.isKey(getContext(), R.string.stats_units_key, key)) {
+            updateUInecessary = true;
+            preferenceMetricUnits = PreferencesUtils.isMetricUnits(sharedPreferences, getContext());
+        }
+
+        if (PreferencesUtils.isKey(getContext(), R.string.stats_rate_key, key)) {
+            updateUInecessary = true;
+            preferenceReportSpeed = PreferencesUtils.isReportSpeed(sharedPreferences, getContext(), category);
+        }
+
+        if (key != null && updateUInecessary && isResumed()) {
+            getActivity().runOnUiThread(() -> {
+                if (isResumed()) {
+                    updateUI();
+                }
+            });
+        }
+    };
+
     @Override
     public void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
         trackId = getArguments().getParcelable(TRACK_ID_KEY);
         contentProviderUtils = new ContentProviderUtils(getContext());
+
+        sharedPreferences = PreferencesUtils.getSharedPreferences(getContext());
+
+        sensorsAdapter = new SensorsAdapter(getContext());
+    }
+
+    @Override
+    public View onCreateView(@NonNull LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
+        viewBinding = StatisticsRecordedBinding.inflate(inflater, container, false);
+
+        RecyclerView sensorsRecyclerView = viewBinding.statsSensorsRecyclerView;
+        sensorsRecyclerView.setLayoutManager(new GridLayoutManager(getContext(), 2));
+        sensorsRecyclerView.setAdapter(sensorsAdapter);
+
+        return viewBinding.getRoot();
     }
 
     @Override
     public void onResume() {
         super.onResume();
-        PreferencesUtils.register(getContext(), sharedPreferenceChangeListener);
+
+        sharedPreferences.registerOnSharedPreferenceChangeListener(sharedPreferenceChangeListener);
+        sharedPreferenceChangeListener.onSharedPreferenceChanged(sharedPreferences, null);
 
         loadStatistics();
     }
@@ -103,7 +138,13 @@ public class StatisticsRecordedFragment extends Fragment {
         super.onDestroyView();
         viewBinding = null;
 
-        PreferencesUtils.unregister(getContext(), sharedPreferenceChangeListener);
+        sharedPreferences.unregisterOnSharedPreferenceChangeListener(sharedPreferenceChangeListener);
+    }
+
+    @Override
+    public void onDestroy() {
+        super.onDestroy();
+        sharedPreferences = null;
     }
 
     public void loadStatistics() {
@@ -112,21 +153,26 @@ public class StatisticsRecordedFragment extends Fragment {
                 if (isResumed()) {
                     Track track = contentProviderUtils.getTrack(trackId);
                     trackStatistics = track != null ? track.getTrackStatistics() : null;
-                    category = track != null ? track.getCategory() : "";
+                    sensorStatistics = contentProviderUtils.getSensorStats(trackId);
+
+                    String newCategory = track != null ? track.getCategory() : "";
+                    if (!category.equals(newCategory)) {
+                        category = newCategory;
+                        sharedPreferenceChangeListener.onSharedPreferenceChanged(sharedPreferences, getString(R.string.stats_rate_key));
+                    }
+
                     updateUI();
+                    updateSensorUI();
                 }
             });
         }
     }
 
     private void updateUI() {
-        boolean metricUnits = PreferencesUtils.isMetricUnits(getContext());
-        boolean reportSpeed = PreferencesUtils.isReportSpeed(getContext(), category);
-
         // Set total distance
         {
             double totalDistance = trackStatistics == null ? Double.NaN : trackStatistics.getTotalDistance();
-            Pair<String, String> parts = StringUtils.getDistanceParts(getContext(), totalDistance, metricUnits);
+            Pair<String, String> parts = StringUtils.getDistanceParts(getContext(), totalDistance, preferenceMetricUnits);
 
             viewBinding.statsDistanceValue.setText(parts.first);
             viewBinding.statsDistanceUnit.setText(parts.second);
@@ -147,9 +193,9 @@ public class StatisticsRecordedFragment extends Fragment {
         // Set average speed/pace
         {
             double speed = trackStatistics != null ? trackStatistics.getAverageSpeed() : Double.NaN;
-            viewBinding.statsAverageSpeedLabel.setText(reportSpeed ? R.string.stats_average_speed : R.string.stats_average_pace);
+            viewBinding.statsAverageSpeedLabel.setText(preferenceReportSpeed ? R.string.stats_average_speed : R.string.stats_average_pace);
 
-            Pair<String, String> parts = StringUtils.getSpeedParts(getContext(), speed, metricUnits, reportSpeed);
+            Pair<String, String> parts = StringUtils.getSpeedParts(getContext(), speed, preferenceMetricUnits, preferenceReportSpeed);
             viewBinding.statsAverageSpeedValue.setText(parts.first);
             viewBinding.statsAverageSpeedUnit.setText(parts.second);
         }
@@ -158,9 +204,9 @@ public class StatisticsRecordedFragment extends Fragment {
         {
             double speed = trackStatistics == null ? Double.NaN : trackStatistics.getMaxSpeed();
 
-            viewBinding.statsMaxSpeedLabel.setText(reportSpeed ? R.string.stats_max_speed : R.string.stats_fastest_pace);
+            viewBinding.statsMaxSpeedLabel.setText(preferenceReportSpeed ? R.string.stats_max_speed : R.string.stats_fastest_pace);
 
-            Pair<String, String> parts = StringUtils.getSpeedParts(getContext(), speed, metricUnits, reportSpeed);
+            Pair<String, String> parts = StringUtils.getSpeedParts(getContext(), speed, preferenceMetricUnits, preferenceReportSpeed);
             viewBinding.statsMaxSpeedValue.setText(parts.first);
             viewBinding.statsMaxSpeedUnit.setText(parts.second);
         }
@@ -169,9 +215,9 @@ public class StatisticsRecordedFragment extends Fragment {
         {
             double speed = trackStatistics != null ? trackStatistics.getAverageMovingSpeed() : Double.NaN;
 
-            viewBinding.statsMovingSpeedLabel.setText(reportSpeed ? R.string.stats_average_moving_speed : R.string.stats_average_moving_pace);
+            viewBinding.statsMovingSpeedLabel.setText(preferenceReportSpeed ? R.string.stats_average_moving_speed : R.string.stats_average_moving_pace);
 
-            Pair<String, String> parts = StringUtils.getSpeedParts(getContext(), speed, metricUnits, reportSpeed);
+            Pair<String, String> parts = StringUtils.getSpeedParts(getContext(), speed, preferenceMetricUnits, preferenceReportSpeed);
             viewBinding.statsMovingSpeedValue.setText(parts.first);
             viewBinding.statsMovingSpeedUnit.setText(parts.second);
         }
@@ -187,13 +233,35 @@ public class StatisticsRecordedFragment extends Fragment {
 
             Pair<String, String> parts;
 
-            parts = StringUtils.formatElevation(getContext(), elevationGain_m, metricUnits);
+            parts = StringUtils.formatElevation(getContext(), elevationGain_m, preferenceMetricUnits);
             viewBinding.statsElevationGainValue.setText(parts.first);
             viewBinding.statsElevationGainUnit.setText(parts.second);
 
-            parts = StringUtils.formatElevation(getContext(), elevationLoss_m, metricUnits);
+            parts = StringUtils.formatElevation(getContext(), elevationLoss_m, preferenceMetricUnits);
             viewBinding.statsElevationLossValue.setText(parts.first);
             viewBinding.statsElevationLossUnit.setText(parts.second);
+        }
+    }
+
+    private void updateSensorUI() {
+        if (sensorStatistics == null) {
+            return;
+        }
+
+        List<SensorDataModel> sensorDataList = new ArrayList<>();
+        if (sensorStatistics.hasHeartRate()) {
+            sensorDataList.add(new SensorDataModel(R.string.sensor_state_heart_rate_max, R.string.sensor_unit_beats_per_minute, sensorStatistics.getMaxHeartRate()));
+            sensorDataList.add(new SensorDataModel(R.string.sensor_state_heart_rate_avg, R.string.sensor_unit_beats_per_minute, sensorStatistics.getAvgHeartRate()));
+        }
+        if (sensorStatistics.hasCadence()) {
+            sensorDataList.add(new SensorDataModel(R.string.sensor_state_cadence_max, R.string.sensor_unit_rounds_per_minute, sensorStatistics.getMaxCadence()));
+            sensorDataList.add(new SensorDataModel(R.string.sensor_state_cadence_avg, R.string.sensor_unit_rounds_per_minute, sensorStatistics.getAvgCadence()));
+        }
+        if (sensorStatistics.hasPower()) {
+            sensorDataList.add(new SensorDataModel(R.string.sensor_state_power_avg, R.string.sensor_unit_power, sensorStatistics.getAvgPower()));
+        }
+        if (sensorDataList.size() > 0) {
+            sensorsAdapter.swapData(sensorDataList);
         }
     }
 }

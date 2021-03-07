@@ -17,6 +17,7 @@
 package de.dennisguse.opentracks.content.provider;
 
 import android.content.ContentResolver;
+import android.content.ContentUris;
 import android.content.ContentValues;
 import android.content.Context;
 import android.database.Cursor;
@@ -29,6 +30,8 @@ import androidx.annotation.Nullable;
 import androidx.annotation.VisibleForTesting;
 
 import java.io.File;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
@@ -42,6 +45,7 @@ import de.dennisguse.opentracks.content.data.Track;
 import de.dennisguse.opentracks.content.data.TrackPoint;
 import de.dennisguse.opentracks.content.data.TrackPointsColumns;
 import de.dennisguse.opentracks.content.data.TracksColumns;
+import de.dennisguse.opentracks.stats.SensorStatistics;
 import de.dennisguse.opentracks.stats.TrackStatistics;
 import de.dennisguse.opentracks.util.FileUtils;
 import de.dennisguse.opentracks.util.UUIDUtils;
@@ -63,8 +67,6 @@ public class ContentProviderUtils {
     // The base URI for the app's content provider.
     public static final String CONTENT_BASE_URI = "content://" + AUTHORITY_PACKAGE;
 
-    // Maximum number of markers that will be loaded at one time.
-    public static final int MAX_LOADED_MARKERS = 10000;
     private static final String ID_SEPARATOR = ",";
 
     private final ContentResolver contentResolver;
@@ -77,20 +79,6 @@ public class ContentProviderUtils {
     @VisibleForTesting
     public ContentProviderUtils(ContentResolver contentResolver) {
         this.contentResolver = contentResolver;
-    }
-
-    /**
-     * Clears a track: removes markers and trackPoints.
-     * Only keeps the track id.
-     *
-     * @param trackId the track id
-     */
-    @Deprecated //TODO Figure out why we need this.
-    public void clearTrack(Track.Id trackId) {
-        deleteTrackPointsAndMarkers(trackId);
-        Track track = new Track();
-        track.setId(trackId);
-        updateTrack(track);
     }
 
     /**
@@ -134,19 +122,19 @@ public class ContentProviderUtils {
             track.setCategory(cursor.getString(categoryIndex));
         }
         if (!cursor.isNull(startTimeIndex)) {
-            trackStatistics.setStartTime_ms(cursor.getLong(startTimeIndex));
+            trackStatistics.setStartTime(Instant.ofEpochMilli(cursor.getLong(startTimeIndex)));
         }
         if (!cursor.isNull(stopTimeIndex)) {
-            trackStatistics.setStopTime_ms(cursor.getLong(stopTimeIndex));
+            trackStatistics.setStopTime(Instant.ofEpochMilli(cursor.getLong(stopTimeIndex)));
         }
         if (!cursor.isNull(totalDistanceIndex)) {
             trackStatistics.setTotalDistance(cursor.getFloat(totalDistanceIndex));
         }
         if (!cursor.isNull(totalTimeIndex)) {
-            trackStatistics.setTotalTime(cursor.getLong(totalTimeIndex));
+            trackStatistics.setTotalTime(Duration.ofMillis(cursor.getLong(totalTimeIndex)));
         }
         if (!cursor.isNull(movingTimeIndex)) {
-            trackStatistics.setMovingTime(cursor.getLong(movingTimeIndex));
+            trackStatistics.setMovingTime(Duration.ofMillis(cursor.getLong(movingTimeIndex)));
         }
         if (!cursor.isNull(maxSpeedIndex)) {
             trackStatistics.setMaxSpeed(cursor.getFloat(maxSpeedIndex));
@@ -199,13 +187,7 @@ public class ContentProviderUtils {
         contentResolver.delete(TracksColumns.CONTENT_URI, TracksColumns._ID + "=?", new String[]{Long.toString(trackId.getId())});
     }
 
-    private void deleteTrackPointsAndMarkers(@NonNull Track.Id trackId) {
-        String[] selectionArgs = new String[]{Long.toString(trackId.getId())};
-
-        contentResolver.delete(TrackPointsColumns.CONTENT_URI_BY_ID, TrackPointsColumns.TRACKID + "=?", selectionArgs);
-        contentResolver.delete(MarkerColumns.CONTENT_URI, MarkerColumns.TRACKID + "=?", selectionArgs);
-    }
-
+    //TODO Only use for tests; also move to tests.
     public List<Track> getTracks() {
         ArrayList<Track> tracks = new ArrayList<>();
         try (Cursor cursor = getTrackCursor(null, null, TracksColumns._ID)) {
@@ -284,7 +266,6 @@ public class ContentProviderUtils {
         ContentValues values = new ContentValues();
         TrackStatistics trackStatistics = track.getTrackStatistics();
 
-        // Value < 0 indicates no id is available
         if (track.getId() != null) {
             values.put(TracksColumns._ID, track.getId().getId());
         }
@@ -292,11 +273,15 @@ public class ContentProviderUtils {
         values.put(TracksColumns.NAME, track.getName());
         values.put(TracksColumns.DESCRIPTION, track.getDescription());
         values.put(TracksColumns.CATEGORY, track.getCategory());
-        values.put(TracksColumns.STARTTIME, trackStatistics.getStartTime_ms());
-        values.put(TracksColumns.STOPTIME, trackStatistics.getStopTime_ms());
+        if (trackStatistics.getStartTime() != null) {
+            values.put(TracksColumns.STARTTIME, trackStatistics.getStartTime().toEpochMilli());
+        }
+        if (trackStatistics.getStopTime() != null) {
+            values.put(TracksColumns.STOPTIME, trackStatistics.getStopTime().toEpochMilli());
+        }
         values.put(TracksColumns.TOTALDISTANCE, trackStatistics.getTotalDistance());
-        values.put(TracksColumns.TOTALTIME, trackStatistics.getTotalTime());
-        values.put(TracksColumns.MOVINGTIME, trackStatistics.getMovingTime());
+        values.put(TracksColumns.TOTALTIME, trackStatistics.getTotalTime().toMillis());
+        values.put(TracksColumns.MOVINGTIME, trackStatistics.getMovingTime().toMillis());
         values.put(TracksColumns.AVGSPEED, trackStatistics.getAverageSpeed());
         values.put(TracksColumns.AVGMOVINGSPEED, trackStatistics.getAverageMovingSpeed());
         values.put(TracksColumns.MAXSPEED, trackStatistics.getMaxSpeed());
@@ -326,26 +311,22 @@ public class ContentProviderUtils {
         int bearingIndex = cursor.getColumnIndexOrThrow(MarkerColumns.BEARING);
         int photoUrlIndex = cursor.getColumnIndexOrThrow(MarkerColumns.PHOTOURL);
 
-        Location location = new Location("");
+        Track.Id trackId = new Track.Id(cursor.getLong(trackIdIndex));
+        Marker marker = new Marker(trackId, Instant.ofEpochMilli(cursor.getLong(timeIndex)));
+
         if (!cursor.isNull(longitudeIndex) && !cursor.isNull(latitudeIndex)) {
-            location.setLongitude(((double) cursor.getInt(longitudeIndex)) / 1E6);
-            location.setLatitude(((double) cursor.getInt(latitudeIndex)) / 1E6);
-        }
-        if (!cursor.isNull(timeIndex)) {
-            location.setTime(cursor.getLong(timeIndex));
+            marker.setLongitude(((double) cursor.getInt(longitudeIndex)) / 1E6);
+            marker.setLatitude(((double) cursor.getInt(latitudeIndex)) / 1E6);
         }
         if (!cursor.isNull(altitudeIndex)) {
-            location.setAltitude(cursor.getFloat(altitudeIndex));
+            marker.setAltitude(cursor.getFloat(altitudeIndex));
         }
         if (!cursor.isNull(accuracyIndex)) {
-            location.setAccuracy(cursor.getFloat(accuracyIndex));
+            marker.setAccuracy(cursor.getFloat(accuracyIndex));
         }
         if (!cursor.isNull(bearingIndex)) {
-            location.setBearing(cursor.getFloat(bearingIndex));
+            marker.setBearing(cursor.getFloat(bearingIndex));
         }
-
-        Track.Id trackId = new Track.Id(cursor.getLong(trackIdIndex));
-        Marker marker = new Marker(trackId, location);
 
         if (!cursor.isNull(idIndex)) {
             marker.setId(new Marker.Id(cursor.getLong(idIndex)));
@@ -439,7 +420,8 @@ public class ContentProviderUtils {
         return markers;
     }
 
-    @Deprecated //TODO TracksColumns.MARKER_COUNT while querying for tracks
+    //TODO Move to testing package
+    @Deprecated
     public int getMarkerCount(Track.Id trackId) {
         String[] projection = new String[]{"count(*) AS count"};
         String selection = MarkerColumns.TRACKID + "=?";
@@ -502,18 +484,17 @@ public class ContentProviderUtils {
         values.put(MarkerColumns.LENGTH, marker.getLength());
         values.put(MarkerColumns.DURATION, marker.getDuration());
 
-        Location location = marker.getLocation();
-        values.put(MarkerColumns.LONGITUDE, (int) (location.getLongitude() * 1E6));
-        values.put(MarkerColumns.LATITUDE, (int) (location.getLatitude() * 1E6));
-        values.put(MarkerColumns.TIME, location.getTime());
-        if (location.hasAltitude()) {
-            values.put(MarkerColumns.ALTITUDE, location.getAltitude());
+        values.put(MarkerColumns.LONGITUDE, (int) (marker.getLongitude() * 1E6));
+        values.put(MarkerColumns.LATITUDE, (int) (marker.getLatitude() * 1E6));
+        values.put(MarkerColumns.TIME, marker.getTime().toEpochMilli());
+        if (marker.hasAltitude()) {
+            values.put(MarkerColumns.ALTITUDE, marker.getAltitude());
         }
-        if (location.hasAccuracy()) {
-            values.put(MarkerColumns.ACCURACY, location.getAccuracy());
+        if (marker.hasAccuracy()) {
+            values.put(MarkerColumns.ACCURACY, marker.getAccuracy());
         }
-        if (location.hasBearing()) {
-            values.put(MarkerColumns.BEARING, location.getBearing());
+        if (marker.hasBearing()) {
+            values.put(MarkerColumns.BEARING, marker.getBearing());
         }
 
         values.put(MarkerColumns.PHOTOURL, marker.getPhotoUrl());
@@ -544,10 +525,8 @@ public class ContentProviderUtils {
      * @param indexes the cached trackPoints indexes
      */
     static TrackPoint fillTrackPoint(Cursor cursor, CachedTrackPointsIndexes indexes) {
-        TrackPoint trackPoint = new TrackPoint();
-        if (!cursor.isNull(indexes.longitudeIndex)) {
-            trackPoint.setId(new TrackPoint.Id(cursor.getInt(indexes.idIndex)));
-        }
+        TrackPoint trackPoint = new TrackPoint(TrackPoint.Type.getById(cursor.getInt(indexes.typeIndex)));
+        trackPoint.setId(new TrackPoint.Id(cursor.getInt(indexes.idIndex)));
 
         if (!cursor.isNull(indexes.longitudeIndex)) {
             trackPoint.setLongitude(((double) cursor.getInt(indexes.longitudeIndex)) / 1E6);
@@ -556,7 +535,7 @@ public class ContentProviderUtils {
             trackPoint.setLatitude(((double) cursor.getInt(indexes.latitudeIndex)) / 1E6);
         }
         if (!cursor.isNull(indexes.timeIndex)) {
-            trackPoint.setTime(cursor.getLong(indexes.timeIndex));
+            trackPoint.setTime(Instant.ofEpochMilli(cursor.getLong(indexes.timeIndex)));
         }
         if (!cursor.isNull(indexes.altitudeIndex)) {
             trackPoint.setAltitude(cursor.getFloat(indexes.altitudeIndex));
@@ -696,7 +675,7 @@ public class ContentProviderUtils {
      */
     @Deprecated
     public TrackPoint getLastValidTrackPoint(Track.Id trackId) {
-        String selection = TrackPointsColumns._ID + "=(SELECT MAX(" + TrackPointsColumns._ID + ") FROM " + TrackPointsColumns.TABLE_NAME + " WHERE " + TrackPointsColumns.TRACKID + "=? AND " + TrackPointsColumns.LATITUDE + "<=" + MAX_LATITUDE + ")";
+        String selection = TrackPointsColumns._ID + "=(SELECT MAX(" + TrackPointsColumns._ID + ") FROM " + TrackPointsColumns.TABLE_NAME + " WHERE " + TrackPointsColumns.TRACKID + "=? AND " + TrackPointsColumns.TYPE + " IN (" + TrackPoint.Type.SEGMENT_START_AUTOMATIC.type_db + "," + TrackPoint.Type.TRACKPOINT.type_db + "))";
         String[] selectionArgs = new String[]{Long.toString(trackId.getId())};
         return findTrackPointBy(selection, selectionArgs);
     }
@@ -715,16 +694,19 @@ public class ContentProviderUtils {
     /**
      * Creates the {@link ContentValues} for a {@link TrackPoint}.
      *
-     * @param trackPoint the trackPointstats_pace_km#87
+     * @param trackPoint the trackPoint
      * @param trackId    the track id
      */
     private ContentValues createContentValues(TrackPoint trackPoint, Track.Id trackId) {
         ContentValues values = new ContentValues();
         values.put(TrackPointsColumns.TRACKID, trackId.getId());
-        values.put(TrackPointsColumns.LONGITUDE, (int) (trackPoint.getLongitude() * 1E6));
-        values.put(TrackPointsColumns.LATITUDE, (int) (trackPoint.getLatitude() * 1E6));
+        values.put(TrackPointsColumns.TYPE, trackPoint.getType().type_db);
 
-        values.put(TrackPointsColumns.TIME, trackPoint.getTime());
+        if (trackPoint.hasLocation()) {
+            values.put(TrackPointsColumns.LONGITUDE, (int) (trackPoint.getLongitude() * 1E6));
+            values.put(TrackPointsColumns.LATITUDE, (int) (trackPoint.getLatitude() * 1E6));
+        }
+        values.put(TrackPointsColumns.TIME, trackPoint.getTime().toEpochMilli());
         if (trackPoint.hasAltitude()) {
             values.put(TrackPointsColumns.ALTITUDE, trackPoint.getAltitude());
         }
@@ -854,5 +836,22 @@ public class ContentProviderUtils {
 
     public static String[] parseTrackIdsFromUri(Uri url) {
         return TextUtils.split(url.getLastPathSegment(), ID_SEPARATOR);
+    }
+
+    public SensorStatistics getSensorStats(@NonNull Track.Id trackId) {
+        SensorStatistics sensorStatistics = null;
+        try (Cursor cursor = contentResolver.query(ContentUris.withAppendedId(TracksColumns.CONTENT_URI_SENSOR_STATS, trackId.getId()), null, null, null, null)) {
+            if (cursor != null && cursor.moveToFirst()) {
+                sensorStatistics = new SensorStatistics(
+                        !cursor.isNull(cursor.getColumnIndexOrThrow("max_hr")) ? cursor.getFloat(cursor.getColumnIndexOrThrow(TrackPointsColumns.ALIAS_MAX_HR)) : null,
+                        !cursor.isNull(cursor.getColumnIndexOrThrow("avg_hr")) ? cursor.getFloat(cursor.getColumnIndexOrThrow(TrackPointsColumns.ALIAS_AVG_HR)) : null,
+                        !cursor.isNull(cursor.getColumnIndexOrThrow("max_cadence")) ? cursor.getFloat(cursor.getColumnIndexOrThrow(TrackPointsColumns.ALIAS_MAX_CADENCE)) : null,
+                        !cursor.isNull(cursor.getColumnIndexOrThrow("avg_cadence")) ? cursor.getFloat(cursor.getColumnIndexOrThrow(TrackPointsColumns.ALIAS_AVG_CADENCE)) : null,
+                        !cursor.isNull(cursor.getColumnIndexOrThrow("avg_power")) ? cursor.getFloat(cursor.getColumnIndexOrThrow(TrackPointsColumns.ALIAS_AVG_POWER)) : null
+                );
+            }
+
+        }
+        return sensorStatistics;
     }
 }

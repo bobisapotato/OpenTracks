@@ -16,6 +16,8 @@
 
 package de.dennisguse.opentracks.content;
 
+import androidx.annotation.Nullable;
+
 import de.dennisguse.opentracks.content.data.Marker;
 import de.dennisguse.opentracks.content.data.Track;
 import de.dennisguse.opentracks.content.data.TrackPoint;
@@ -32,6 +34,7 @@ public interface TrackDataListener {
      *
      * @param track the track
      */
+    //TODO Could be @NonNull
     void onTrackUpdated(Track track);
 
     /**
@@ -57,7 +60,7 @@ public interface TrackDataListener {
      * Called when finish sending new track points.
      * This gets called after every batch of calls to {@link #onSampledInTrackPoint(TrackPoint)} and {@link #onSampledOutTrackPoint(TrackPoint)}.
      */
-    void onNewTrackPointsDone();
+    void onNewTrackPointsDone(@Nullable TrackPoint lastTrackPoint);
 
     /**
      * Called to clear previously sent markers.

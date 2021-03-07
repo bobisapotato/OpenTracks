@@ -24,6 +24,8 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.accessibility.AccessibilityEvent;
 
+import java.time.Duration;
+
 import de.dennisguse.opentracks.databinding.TrackControllerBinding;
 import de.dennisguse.opentracks.services.TrackRecordingServiceConnection;
 import de.dennisguse.opentracks.services.TrackRecordingServiceInterface;
@@ -52,9 +54,8 @@ public class TrackController implements View.OnTouchListener {
     private final TransitionDrawable transition;
 
     private boolean isRecording;
-    private boolean isPaused;
-    private long totalTime = 0;
-    private long totalTimeTimestamp = 0;
+    private boolean isRecordingPaused;
+    private Duration totalTime;
     private boolean isResumed = false;
 
     private final Callback callback;
@@ -62,8 +63,9 @@ public class TrackController implements View.OnTouchListener {
     // A runnable to update the total time.
     private final Runnable updateTotalTimeRunnable = new Runnable() {
         public void run() {
-            if (isResumed && isRecording && !isPaused) {
-                viewBinding.trackControllerTotalTime.setText(StringUtils.formatElapsedTimeWithHour(System.currentTimeMillis() - totalTimeTimestamp + totalTime));
+            if (isResumed && isRecording && !isRecordingPaused) {
+                updateTotalTime();
+                setTotalTime();
                 handlerUpdateTotalTime.postDelayed(this, UnitConversions.ONE_SECOND_MS);
             }
         }
@@ -81,7 +83,7 @@ public class TrackController implements View.OnTouchListener {
 
         viewBinding.trackControllerRecord.setOnTouchListener(this);
         viewBinding.trackControllerRecord.setOnClickListener((view) -> {
-            if (buttonDelay != null || (isRecording && !isPaused)) {
+            if (buttonDelay != null || (isRecording && !isRecordingPaused)) {
                 return;
             }
 
@@ -117,7 +119,7 @@ public class TrackController implements View.OnTouchListener {
         //To pause a recording
         if (viewBinding.trackControllerRecord.equals(view)
                 && event.getAction() == MotionEvent.ACTION_DOWN
-                && isRecording && !isPaused) {
+                && isRecording && !isRecordingPaused) {
 
             transition.startTransition(buttonDelayDuration);
 
@@ -164,10 +166,11 @@ public class TrackController implements View.OnTouchListener {
 
     public void update(boolean recording, boolean paused) {
         if (!isResumed) {
+            handlerUpdateTotalTime.removeCallbacks(updateTotalTimeRunnable);
             return;
         }
         isRecording = recording;
-        isPaused = paused;
+        isRecordingPaused = paused;
         boolean visible = alwaysShow || isRecording;
         viewBinding.trackControllerContainer.setVisibility(visible ? View.VISIBLE : View.GONE);
 
@@ -176,26 +179,26 @@ public class TrackController implements View.OnTouchListener {
             return;
         }
 
-        viewBinding.trackControllerRecord.setImageResource(isRecording && !isPaused ? R.drawable.ic_button_pause : R.drawable.button_record);
-        viewBinding.trackControllerRecord.setContentDescription(activity.getString(isRecording && !isPaused ? R.string.image_pause : R.string.image_record));
+        if (isRecording && !isRecordingPaused) {
+            handlerUpdateTotalTime.postDelayed(updateTotalTimeRunnable, UnitConversions.ONE_SECOND_MS);
+        }
+
+        viewBinding.trackControllerRecord.setImageResource(isRecording && !isRecordingPaused ? R.drawable.ic_button_pause : R.drawable.button_record);
+        viewBinding.trackControllerRecord.setContentDescription(activity.getString(isRecording && !isRecordingPaused ? R.string.image_pause : R.string.image_record));
 
         viewBinding.trackControllerStop.setEnabled(isRecording);
 
         viewBinding.trackControllerStatus.setVisibility(isRecording ? View.VISIBLE : View.INVISIBLE);
         if (isRecording) {
-            viewBinding.trackControllerStatus.setTextColor(activity.getResources().getColor(isPaused ? android.R.color.white : R.color.recording_text));
+            viewBinding.trackControllerStatus.setTextColor(activity.getResources().getColor(isRecordingPaused ? android.R.color.white : R.color.recording_text));
             showStatusSetDefaultText();
         }
 
-        handlerUpdateTotalTime.removeCallbacks(updateTotalTimeRunnable);
         viewBinding.trackControllerTotalTime.setVisibility(isRecording ? View.VISIBLE : View.INVISIBLE);
+
         if (isRecording) {
-            totalTime = getTotalTime();
-            viewBinding.trackControllerTotalTime.setText(StringUtils.formatElapsedTimeWithHour(totalTime));
-            if (!isPaused) {
-                totalTimeTimestamp = System.currentTimeMillis();
-                handlerUpdateTotalTime.postDelayed(updateTotalTimeRunnable, UnitConversions.ONE_SECOND_MS);
-            }
+            updateTotalTime();
+            setTotalTime();
         }
     }
 
@@ -217,16 +220,21 @@ public class TrackController implements View.OnTouchListener {
         viewBinding.trackControllerContainer.setVisibility(View.VISIBLE);
     }
 
-    /**
-     * Gets the total time for the current recording track.
-     */
-    private long getTotalTime() {
+    private void updateTotalTime() {
         TrackRecordingServiceInterface trackRecordingService = trackRecordingServiceConnection.getServiceIfBound();
-        return trackRecordingService != null ? trackRecordingService.getTotalTime() : 0L;
+        if (trackRecordingService != null) {
+            totalTime = trackRecordingService.getTotalTime();
+        }
+    }
+
+    private void setTotalTime() {
+        if (totalTime != null) {
+            viewBinding.trackControllerTotalTime.setText(StringUtils.formatElapsedTimeWithHour(totalTime));
+        }
     }
 
     private void showStatusSetDefaultText() {
-        viewBinding.trackControllerStatus.setText(isPaused ? R.string.generic_paused : R.string.generic_recording);
+        viewBinding.trackControllerStatus.setText(isRecordingPaused ? R.string.generic_paused : R.string.generic_recording);
     }
 
     public interface Callback {

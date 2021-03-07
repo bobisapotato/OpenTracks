@@ -19,6 +19,9 @@ package de.dennisguse.opentracks.stats;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
+import java.time.Duration;
+import java.time.Instant;
+
 /**
  * Statistical data about a {@link de.dennisguse.opentracks.content.data.Track}.
  * The data in this class should be filled out by {@link TrackStatisticsUpdater}.
@@ -26,21 +29,22 @@ import androidx.annotation.Nullable;
  * @author Rodrigo Damazio
  */
 //TODO Use null instead of Double.isInfinite
+//TODO Check that data ranges are valid (not less than zero etc.)
 public class TrackStatistics {
 
     // The min and max elevation (meters) seen on this track.
     private final ExtremityMonitor elevationExtremities = new ExtremityMonitor();
 
-    // The track start time. This is the system time, might not match the GPs time.
-    private long startTime_ms = -1L;
-    // The track stop time. This is the system time, might not match the GPS time.
-    private long stopTime_ms = -1L;
+    // The track start time.
+    private Instant startTime;
+    // The track stop time.
+    private Instant stopTime;
 
     private double totalDistance_m;
     // Updated when new points are received, may be stale.
-    private long totalTime_ms;
+    private Duration totalTime;
     // Based on when we believe the user is traveling.
-    private long movingTime_ms;
+    private Duration movingTime;
     // The maximum speed (meters/second) that we believe is valid.
     private double maxSpeed_mps;
     // The total elevation gained (meters).
@@ -49,6 +53,7 @@ public class TrackStatistics {
     private Float totalElevationLoss_m = null;
 
     public TrackStatistics() {
+        reset();
     }
 
     /**
@@ -57,11 +62,11 @@ public class TrackStatistics {
      * @param other another statistics data object to copy from
      */
     public TrackStatistics(TrackStatistics other) {
-        startTime_ms = other.startTime_ms;
-        stopTime_ms = other.stopTime_ms;
+        startTime = other.startTime;
+        stopTime = other.stopTime;
         totalDistance_m = other.totalDistance_m;
-        totalTime_ms = other.totalTime_ms;
-        movingTime_ms = other.movingTime_ms;
+        totalTime = other.totalTime;
+        movingTime = other.movingTime;
         maxSpeed_mps = other.maxSpeed_mps;
         elevationExtremities.set(other.elevationExtremities.getMin(), other.elevationExtremities.getMax());
         totalElevationGain_m = other.totalElevationGain_m;
@@ -75,11 +80,20 @@ public class TrackStatistics {
      * @param other another statistics data object
      */
     public void merge(TrackStatistics other) {
-        startTime_ms = Math.min(startTime_ms, other.startTime_ms);
-        stopTime_ms = Math.max(stopTime_ms, other.stopTime_ms);
+        if (startTime == null) {
+            startTime = other.startTime;
+        } else {
+            startTime = startTime.isBefore(other.startTime) ? startTime : other.startTime;
+        }
+        if (stopTime == null) {
+            stopTime = other.stopTime;
+        } else {
+            stopTime = stopTime.isAfter(other.stopTime) ? stopTime : other.stopTime;
+        }
+
         totalDistance_m += other.totalDistance_m;
-        totalTime_ms += other.totalTime_ms;
-        movingTime_ms += other.movingTime_ms;
+        totalTime = totalTime.plus(other.totalTime);
+        movingTime = movingTime.plus(other.movingTime);
         maxSpeed_mps = Math.max(maxSpeed_mps, other.maxSpeed_mps);
         if (other.elevationExtremities.hasData()) {
             elevationExtremities.update(other.elevationExtremities.getMin());
@@ -105,23 +119,44 @@ public class TrackStatistics {
         }
     }
 
+    public void reset() {
+        startTime = null;
+        stopTime = null;
+
+        setTotalDistance(0);
+        setTotalTime(Duration.ofSeconds(0));
+        setMovingTime(Duration.ofSeconds(0));
+        setMaxSpeed(0);
+        setTotalElevationGain(null);
+        setTotalElevationLoss(null);
+    }
+
+    public void reset(Instant startTime) {
+        reset();
+        setStartTime(startTime);
+    }
+
+    public Instant getStartTime() {
+        return startTime;
+    }
+
     /**
-     * Gets the track start time. The number of milliseconds since epoch.
+     * Should only be called on start.
      */
-    public long getStartTime_ms() {
-        return startTime_ms;
+    public void setStartTime(Instant startTime) {
+        this.startTime = startTime;
+        setStopTime(startTime);
     }
 
-    public void setStartTime_ms(long startTime_ms) {
-        this.startTime_ms = startTime_ms;
+    public Instant getStopTime() {
+        return stopTime;
     }
 
-    public long getStopTime_ms() {
-        return stopTime_ms;
-    }
-
-    public void setStopTime_ms(long stopTime_ms) {
-        this.stopTime_ms = stopTime_ms;
+    public void setStopTime(Instant stopTime) {
+        if (stopTime.isBefore(startTime)) {
+            throw new RuntimeException("stopTime cannot be less than startTime: " + startTime + " " + stopTime);
+        }
+        this.stopTime = stopTime;
     }
 
     public double getTotalDistance() {
@@ -139,26 +174,26 @@ public class TrackStatistics {
     /**
      * Gets the total time in milliseconds that this track has been active.
      * This statistic is only updated when a new point is added to the statistics, so it may be off.
-     * If you need to calculate the proper total time, use {@link #getStartTime_ms} with the current time.
+     * If you need to calculate the proper total time, use {@link #getStartTime} with the current time.
      */
-    public long getTotalTime() {
-        return totalTime_ms;
+    public Duration getTotalTime() {
+        return totalTime;
     }
 
-    public void setTotalTime(long totalTime_ms) {
-        this.totalTime_ms = totalTime_ms;
+    public void setTotalTime(Duration totalTime) {
+        this.totalTime = totalTime;
     }
 
-    public long getMovingTime() {
-        return movingTime_ms;
+    public Duration getMovingTime() {
+        return movingTime;
     }
 
-    public void setMovingTime(long movingTime_ms) {
-        this.movingTime_ms = movingTime_ms;
+    public void setMovingTime(Duration movingTime) {
+        this.movingTime = movingTime;
     }
 
-    public void addMovingTime(long time_ms) {
-        movingTime_ms += time_ms;
+    public void addMovingTime(Duration time) {
+        movingTime = movingTime.plus(time);
     }
 
     /**
@@ -166,20 +201,20 @@ public class TrackStatistics {
      * This calculation only takes into account the displacement until the last point that was accounted for in statistics.
      */
     public double getAverageSpeed() {
-        if (totalTime_ms == 0L) {
+        if (totalTime.isZero()) {
             return 0.0;
         }
-        return totalDistance_m / ((double) totalTime_ms / 1000.0);
+        return totalDistance_m / (double) totalTime.getSeconds();
     }
 
     /**
      * Gets the average moving speed in meters/second.
      */
     public double getAverageMovingSpeed() {
-        if (movingTime_ms == 0L) {
+        if (movingTime.isZero()) {
             return 0.0;
         }
-        return totalDistance_m / ((double) movingTime_ms / 1000.0);
+        return totalDistance_m / (double) movingTime.getSeconds();
     }
 
     /**
@@ -253,12 +288,12 @@ public class TrackStatistics {
         return totalElevationGain_m != null;
     }
 
-    public @Nullable
-    Float getTotalElevationGain() {
+    @Nullable
+    public Float getTotalElevationGain() {
         return totalElevationGain_m;
     }
 
-    public void setTotalElevationGain(float totalElevationGain_m) {
+    public void setTotalElevationGain(Float totalElevationGain_m) {
         this.totalElevationGain_m = totalElevationGain_m;
     }
 
@@ -273,12 +308,12 @@ public class TrackStatistics {
         return totalElevationLoss_m != null;
     }
 
-    public @Nullable
-    Float getTotalElevationLoss() {
+    @Nullable
+    public Float getTotalElevationLoss() {
         return totalElevationLoss_m;
     }
 
-    public void setTotalElevationLoss(float totalElevationLoss_m) {
+    public void setTotalElevationLoss(Float totalElevationLoss_m) {
         this.totalElevationLoss_m = totalElevationLoss_m;
     }
 
@@ -292,7 +327,7 @@ public class TrackStatistics {
     @NonNull
     @Override
     public String toString() {
-        return "TrackStatistics { Start Time: " + getStartTime_ms() + "; Stop Time: " + getStopTime_ms()
+        return "TrackStatistics { Start Time: " + getStartTime() + "; Stop Time: " + getStopTime()
                 + "; Total Distance: " + getTotalDistance() + "; Total Time: " + getTotalTime()
                 + "; Moving Time: " + getMovingTime() + "; Max Speed: " + getMaxSpeed()
                 + "; Min Elevation: " + getMinElevation() + "; Max Elevation: " + getMaxElevation()

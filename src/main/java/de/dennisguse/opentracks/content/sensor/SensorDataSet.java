@@ -33,11 +33,11 @@ public final class SensorDataSet {
         return cyclingPower;
     }
 
-    public void set(SensorData data) {
+    public void set(SensorData<?> data) {
         set(data, data);
     }
 
-    public void remove(SensorData type) {
+    public void remove(SensorData<?> type) {
         set(type, null);
     }
 
@@ -50,19 +50,19 @@ public final class SensorDataSet {
 
     public void fillTrackPoint(TrackPoint trackPoint) {
         if (heartRate != null) {
-            trackPoint.setHeartRate_bpm(heartRate.getHeartRate_bpm());
+            trackPoint.setHeartRate_bpm(heartRate.getValue());
         }
 
-        if (cyclingCadence != null && cyclingCadence.hasCadence_rpm()) {
-            trackPoint.setCyclingCadence_rpm(cyclingCadence.getCadence_rpm());
+        if (cyclingCadence != null && cyclingCadence.hasValue()) {
+            trackPoint.setCyclingCadence_rpm(cyclingCadence.getValue());
         }
 
-        if (cyclingSpeed != null && cyclingSpeed.hasSpeed_mps()) {
-            trackPoint.setSpeed(cyclingSpeed.getSpeed_mps());
+        if (cyclingSpeed != null && cyclingSpeed.hasValue()) {
+            trackPoint.setSpeed(cyclingSpeed.getValue());
         }
 
-        if (cyclingPower != null && cyclingPower.hasPower_w()) {
-            trackPoint.setPower(cyclingPower.getPower_w());
+        if (cyclingPower != null && cyclingPower.hasValue()) {
+            trackPoint.setPower(cyclingPower.getValue());
         }
     }
 
@@ -75,7 +75,7 @@ public final class SensorDataSet {
                 + (getCyclingPower() != null ? " " + getCyclingPower() : "");
     }
 
-    private void set(@NonNull SensorData type, SensorData data) {
+    private void set(@NonNull SensorData<?> type, SensorData<?> data) {
         if (type instanceof SensorDataHeartRate) {
             this.heartRate = (SensorDataHeartRate) data;
             return;

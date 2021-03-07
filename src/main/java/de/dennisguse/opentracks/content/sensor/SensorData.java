@@ -4,28 +4,32 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.VisibleForTesting;
 
+import java.time.Instant;
+
 import de.dennisguse.opentracks.services.sensors.BluetoothRemoteSensorManager;
 
-public class SensorData {
+public abstract class SensorData<T> {
+
+    protected T value;
 
     private final String sensorAddress;
     private final String sensorName;
 
-    private final long timestamp_ms;
+    private final Instant time;
 
     SensorData(String sensorAddress) {
-        this(sensorAddress, null, System.currentTimeMillis());
+        this(sensorAddress, null);
     }
 
     SensorData(String sensorAddress, String sensorName) {
-        this(sensorAddress, sensorName, System.currentTimeMillis());
+        this(sensorAddress, sensorName, Instant.now());
     }
 
     @VisibleForTesting
-    SensorData(String sensorAddress, String sensorName, long timestamp_ms) {
+    SensorData(String sensorAddress, String sensorName, Instant time) {
         this.sensorAddress = sensorAddress;
         this.sensorName = sensorName;
-        this.timestamp_ms = timestamp_ms;
+        this.time = time;
     }
 
     @NonNull
@@ -42,10 +46,19 @@ public class SensorData {
         return sensorName != null ? sensorName : sensorAddress;
     }
 
+    public boolean hasValue() {
+        return value != null;
+    }
+
+    public T getValue() {
+        return value;
+    }
+
     /**
      * Is the data recent considering the current time.
      */
     public boolean isRecent() {
-        return timestamp_ms + BluetoothRemoteSensorManager.MAX_SENSOR_DATE_SET_AGE_MS > System.currentTimeMillis();
+        return Instant.now()
+                .isBefore(time.plus(BluetoothRemoteSensorManager.MAX_SENSOR_DATE_SET_AGE_MS));
     }
 }

@@ -224,7 +224,6 @@ limitations under the License.
     <string name="menu_view_photo">Se bildet</string>
     <string name="menu_voice_frequency">Talefrekvens</string>
     <!-- OpenTracks -->
-    <string name="app_name">OpenTracks</string>
     <string name="recording_service">Opptakstjeneste</string>
     <!-- Search -->
     <string name="search_global_description">Spor og markører</string>
@@ -496,7 +495,6 @@ limitations under the License.
     <string name="settings_night_mode_option_system">System</string>
     <string name="settings_night_mode_option_day">Dag</string>
     <string name="settings_night_mode_option_night">Natt</string>
-    <string name="settings_sensor_wheel_circumference">Hjulstørrelse (mm)</string>
     <string name="settings_error_initial_values_restored">Beklager, men det oppstod en feil. Alle innstillinger er tilbakestilt til standardverdiene.</string>
     <string name="stats_intervals">Intervaller</string>
     <string name="track_recording_notification_accuracy">Posisjonsnøyaktighet: %1$s</string>
@@ -599,4 +597,10 @@ limitations under the License.
     <string name="generic_open_track">Åpne spor</string>
     <string name="import_progress_summary_exists_msg">Finnes allerede</string>
     <string name="import_progress_summary_errors_msg">Feil</string>
+    <string name="sensor_state_cadence_avg">Gjennomsnittlig kadens</string>
+    <string name="sensor_state_cadence_max">Maks kadens</string>
+    <string name="sensor_state_heart_rate_avg">Gjennomsnittlig puls</string>
+    <string name="sensor_state_heart_rate_max">Maks puls</string>
+    <string name="sensor_state_power_avg">Gjennomsnittlig effekt</string>
+    <string name="settings_sensor_wheel_circumference">Hjulomkrets (mm)</string>
 </resources>

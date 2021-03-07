@@ -4,13 +4,16 @@ import android.content.Context;
 
 import androidx.annotation.Nullable;
 
+import java.time.Duration;
+
 import de.dennisguse.opentracks.R;
 import de.dennisguse.opentracks.stats.TrackStatistics;
 import de.dennisguse.opentracks.viewmodels.IntervalStatistics;
 
 public class AnnouncementUtils {
 
-    private AnnouncementUtils() {}
+    private AnnouncementUtils() {
+    }
 
     public static String getAnnouncement(Context context, TrackStatistics trackStatistics, String category, @Nullable IntervalStatistics.Interval currentInterval) {
         boolean metricUnits = PreferencesUtils.isMetricUnits(context);
@@ -41,11 +44,11 @@ public class AnnouncementUtils {
         } else {
             double timePerDistance = distancePerTime == 0 ? 0.0 : 1 / distancePerTime;
             int paceId = metricUnits ? R.string.voice_pace_per_kilometer : R.string.voice_pace_per_mile;
-            long time = Math.round(timePerDistance * UnitConversions.HR_TO_MIN * UnitConversions.MIN_TO_S * UnitConversions.S_TO_MS);
+            Duration time = Duration.ofMillis((long) (timePerDistance * UnitConversions.HR_TO_MIN * UnitConversions.MIN_TO_S * UnitConversions.S_TO_MS));
             rate = context.getString(paceId, getAnnounceTime(context, time));
 
             double currentTimePerDistance = currentDistancePerTime == 0 ? 0.0 : 1 / currentDistancePerTime;
-            long currentTime = Math.round(currentTimePerDistance * UnitConversions.HR_TO_MIN * UnitConversions.MIN_TO_S * UnitConversions.S_TO_MS);
+            Duration currentTime = Duration.ofMillis((long) (currentTimePerDistance * UnitConversions.HR_TO_MIN * UnitConversions.MIN_TO_S * UnitConversions.S_TO_MS));
             currentRate = context.getString(paceId, getAnnounceTime(context, currentTime));
             currentRateMsg = context.getString(R.string.voice_pace_lap, currentRate);
         }
@@ -58,48 +61,29 @@ public class AnnouncementUtils {
         return context.getString(R.string.voice_template, totalDistance, getAnnounceTime(context, trackStatistics.getMovingTime()), rate) + currentRateMsg;
     }
 
-    private static String getAnnounceTime(Context context, long time) {
-        int[] parts = StringUtils.getTimeParts(time);
-        String seconds = context.getResources()
-                .getQuantityString(R.plurals.voiceSeconds, parts[0], parts[0]);
-        String minutes = context.getResources()
-                .getQuantityString(R.plurals.voiceMinutes, parts[1], parts[1]);
-        String hours = context.getResources()
-                .getQuantityString(R.plurals.voiceHours, parts[2], parts[2]);
-        StringBuilder sb = new StringBuilder();
-        if (parts[2] != 0) {
-            sb.append(hours);
-            sb.append(" ");
+    //TODO We might need to localize this using strings.xml if order is relevant.
+    private static String getAnnounceTime(Context context, Duration duration) {
+        String result = "";
+
+        int hours = (int) (duration.getSeconds() / (60 * 60));
+        int minutes = (int) (duration.getSeconds() / 60);
+        int seconds = (int) (duration.getSeconds() % 60);
+
+        if (hours != 0) {
+            String hoursText = context.getResources()
+                    .getQuantityString(R.plurals.voiceHours, hours, hours);
+            result += hoursText + " ";
         }
-        sb.append(minutes);
-        sb.append(" ");
-        sb.append(seconds);
-        return sb.toString();
+        String minutesText = context.getResources()
+                .getQuantityString(R.plurals.voiceMinutes, minutes, minutes);
+        String secondsText = context.getResources()
+                .getQuantityString(R.plurals.voiceSeconds, seconds, seconds);
+
+        return result + minutesText + " " + secondsText;
     }
 
-    /**
-     * Gets the plural count to be used by getQuantityString.
-     * getQuantityString only supports integer quantities, not a double quantity like "2.2".
-     * <p>
-     * As a temporary workaround, we convert a double quantity to an integer quantity.
-     * If the double quantity is exactly 0, 1, or 2, then we can return these integer quantities.
-     * Otherwise, we cast the double quantity to an integer quantity.
-     * However, we need to make sure that if the casted value is 0, 1, or 2, we don't return those, instead, return the next biggest integer 3.
-     *
-     * @param d the double value
-     */
-    private static int getQuantityCount(double d) {
-        if (d == 0) {
-            return 0;
-        } else if (d == 1) {
-            return 1;
-        } else if (d == 2) {
-            return 2;
-        } else {
-            //TODO This seems weird; why not use Math.round(d) or Math.ceil()?
-            int count = (int) d;
-            return Math.max(count, 3);
-        }
+    static int getQuantityCount(double d) {
+        return (int) d;
     }
 }
 

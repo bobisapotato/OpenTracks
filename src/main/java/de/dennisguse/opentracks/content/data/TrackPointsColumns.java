@@ -37,13 +37,11 @@ public interface TrackPointsColumns extends BaseColumns {
 
     // Columns
     String TRACKID = "trackid";
+    // See {@link TrackPoint.Type}
+    String TYPE = "type";
 
     String LONGITUDE = "longitude";
     String LATITUDE = "latitude";
-    @Deprecated
-    double PAUSE_LATITUDE = 100.0;
-    @Deprecated
-    double RESUME_LATITUDE = 200.0;
 
     String TIME = "time";
     String ALTITUDE = "elevation";
@@ -55,6 +53,13 @@ public interface TrackPointsColumns extends BaseColumns {
     String SENSOR_POWER = "sensor_power";
     String ELEVATION_GAIN = "elevation_gain";
     String ELEVATION_LOSS = "elevation_loss";
+
+    // Alias for sensor statistics
+    String ALIAS_AVG_HR = "avg_hr";
+    String ALIAS_MAX_HR = "max_hr";
+    String ALIAS_AVG_CADENCE = "avg_cadence";
+    String ALIAS_MAX_CADENCE = "max_cadence";
+    String ALIAS_AVG_POWER = "avg_power";
 
     String CREATE_TABLE = "CREATE TABLE " + TABLE_NAME + " ("
             + _ID + " INTEGER PRIMARY KEY AUTOINCREMENT, "
@@ -71,6 +76,7 @@ public interface TrackPointsColumns extends BaseColumns {
             + SENSOR_POWER + " FLOAT, "
             + ELEVATION_GAIN + " FLOAT, "
             + ELEVATION_LOSS + " FLOAT, "
+            + TYPE + " TEXT CHECK(type IN (-2, -1, 0, 1)), "
             + "FOREIGN KEY (" + TRACKID + ") REFERENCES " + TracksColumns.TABLE_NAME + "(" + TracksColumns._ID + ") ON UPDATE CASCADE ON DELETE CASCADE"
             + ")";
 
